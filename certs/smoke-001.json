@@ -1,0 +1,33 @@
+{
+  "game": "smoke-001",
+  "stress_sha256": "a1150ddd6b083ef21d5c2500ead1ae4992f9a319174ad11171acda28a7316e6b",
+  "placements": 30,
+  "participants": [
+    "reference",
+    "py"
+  ],
+  "placements_by": {
+    "py": 15,
+    "reference": 15
+  },
+  "verdicts": {
+    "c": {
+      "verdict": "no-adapter"
+    },
+    "cpp": {
+      "verdict": "no-adapter"
+    },
+    "py": {
+      "impl": "py",
+      "verdict": "pass",
+      "placements_checked": 30,
+      "first_failure": null
+    }
+  },
+  "result": "HOLD",
+  "reasons": [
+    "c: did not participate",
+    "cpp: did not participate",
+    "placements 30 of 30 (a full test is 10000)"
+  ]
+}

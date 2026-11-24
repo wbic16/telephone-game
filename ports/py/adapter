@@ -1,0 +1,61 @@
+#!/home/hatch/workspace/libphext-py-work/port/.venv/bin/python
+"""Telephone-game adapter for libphext-py (Exocortical Stress Testing, v2).
+
+Wraps the libphext-py implementation in ~/workspace/libphext-py-dynamic/work
+(the v0.7.0-reconciled tree). State bytes move through the library as str
+via latin-1, which maps bytes 0-255 1:1, so byte identity is preserved.
+Only the phext hooks are this port's own; the game machinery is shared
+(harness/adapter_base.py) so every participant plays by identical rules.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.expanduser("~/workspace/libphext-telephone/harness"))
+sys.path.insert(0, os.path.expanduser("~/workspace/libphext-py-dynamic/work"))
+from adapter_base import Adapter, coord_str, parse_coord  # noqa: E402
+from phext.phext import Phext  # noqa: E402
+from phext.coordinate import Coordinate  # noqa: E402
+
+P = Phext()
+
+
+class PyAdapter(Adapter):
+    IMPL = "py"
+
+    def explode(self, data: bytes):
+        buf = data.decode("latin-1")
+        return {ps.coord.as_tuple(): ps.text.encode("latin-1")
+                for ps in P.phokenize(buf)}
+
+    def implode(self, mapping) -> bytes:
+        from phext.positionedScroll import PositionedScroll
+        stack = [PositionedScroll(Coordinate(*c), mapping[c].decode("latin-1"))
+                 for c in sorted(mapping) if mapping[c]]
+        return P.dephokenize(stack).encode("latin-1")
+
+    def insert(self, data: bytes, coord, text: bytes) -> bytes:
+        buf = data.decode("latin-1")
+        out = P.insert(buf, Coordinate(*coord), text.decode("latin-1"))
+        return out.encode("latin-1")
+
+    def fetch(self, data: bytes, coord) -> bytes:
+        buf = data.decode("latin-1")
+        return P.fetch(buf, Coordinate(*coord)).encode("latin-1")
+
+    # ---- this implementation's own adventure ----
+    def choose(self, state, position, turn):
+        m = self.explode(state)
+        pos = list(parse_coord(position))
+        if tuple(pos) in m:
+            while tuple(pos) in m:
+                pos[8] += 1
+        return {"op": "insert", "coordinate": coord_str(pos),
+                "text": "py placement %d at %s" % (turn, coord_str(pos))}
+
+    def elect(self, position, candidates, turn, placements):
+        return min(candidates,
+                   key=lambda c: (placements.get(c, 0), candidates.index(c)))
+
+
+if __name__ == "__main__":
+    PyAdapter().main()

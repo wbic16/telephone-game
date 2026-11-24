@@ -1,0 +1,1 @@
+{"adapter":"ports/dart/adapter","id":"dart","kind":"port","note":"libphext-dart (pure Dart, zero deps; Dart SDK 3.14.1 on aletheia-core). Suite green (44 checks, fixtures 16/16 byte-identical + 16/16 normalize-idempotent); v2 adapter self-test PASS 18/18; verify vs driver smoke-001 stress.phext PASS, 30 placements.","status":"playing"}

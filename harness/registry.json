@@ -1,0 +1,65 @@
+[
+ {
+  "adapter": "harness/reference_adapter.py",
+  "id": "reference",
+  "kind": "verifier",
+  "note": "harness reference implementation (not a port); plays and cross-checks",
+  "status": "playing"
+ },
+ {
+  "adapter": null,
+  "id": "rs",
+  "kind": "port",
+  "note": "blocked 2026-11-24: execution-risk security flag on hub clone work (same flag class as the v0.7.0 py/cpp/C stop; the explicit approval already before Will covers this \u2014 not re-asked). Clone verified clean on emise/v070-perf; no code built or run.",
+  "status": "registered"
+ },
+ {
+  "adapter": null,
+  "id": "cs",
+  "kind": "port",
+  "note": "blocked 2026-11-24: execution-risk security flag on hub clone work (same flag class as the v0.7.0 py/cpp/C stop; the explicit approval already before Will covers this \u2014 not re-asked). Clone verified clean on emise/v070-perf; no code built or run.",
+  "status": "registered"
+ },
+ {
+  "adapter": null,
+  "id": "cpp",
+  "kind": "port",
+  "note": "wbic16/libphext-cpp at 0.6.1; hub-execution approval already before Will from the v0.7.0 program (not re-asked)",
+  "status": "registered"
+ },
+ {
+  "adapter": null,
+  "id": "c",
+  "kind": "port",
+  "note": "wbic16/libphext (C) at 0.6.1; hub-execution approval already before Will from the v0.7.0 program (not re-asked)",
+  "status": "registered"
+ },
+ {
+  "adapter": null,
+  "id": "node",
+  "kind": "port",
+  "note": "blocked 2026-11-24: execution-risk security flag on hub clone work (same flag class as the v0.7.0 py/cpp/C stop; the explicit approval already before Will covers this \u2014 not re-asked). Clone verified clean on emise/v070-perf; no code built or run.",
+  "status": "registered"
+ },
+ {
+  "adapter": null,
+  "id": "java",
+  "kind": "port",
+  "note": "blocked 2026-11-24: execution-risk security flag on hub clone work (same flag class as the v0.7.0 py/cpp/C stop; the explicit approval already before Will covers this \u2014 not re-asked). Clone verified clean on emise/v070-perf; no code built or run.",
+  "status": "registered"
+ },
+ {
+  "adapter": null,
+  "id": "kotlin",
+  "kind": "port",
+  "note": "blocked 2026-11-24: execution-risk security flag on hub clone work (same flag class as the v0.7.0 py/cpp/C stop; the explicit approval already before Will covers this \u2014 not re-asked). Clone verified clean on emise/v070-perf; no code built or run.",
+  "status": "registered"
+ },
+ {
+  "adapter": null,
+  "id": "swift",
+  "kind": "port",
+  "note": "blocked 2026-11-24: execution-risk security flag on hub clone work (same flag class as the v0.7.0 py/cpp/C stop; the explicit approval already before Will covers this \u2014 not re-asked). Clone verified clean on emise/v070-perf; no code built or run.",
+  "status": "registered"
+ }
+]

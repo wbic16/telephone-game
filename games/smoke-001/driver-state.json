@@ -1,0 +1,36 @@
+{
+ "game": "smoke-001",
+ "seed": 42,
+ "target": 30,
+ "players": [
+  "reference",
+  "py"
+ ],
+ "position": [
+  656,
+  117,
+  28,
+  762,
+  284,
+  252,
+  231,
+  144,
+  771
+ ],
+ "holder": "reference",
+ "placements": 30,
+ "event_seq": 32,
+ "last_event_hash": "eb38c91b3bcc2cd7b6007a424eb77320e7dca611559bfcfb7b023ea9391d62d7",
+ "pending_consensus": {},
+ "pending_echoes": [],
+ "placements_by": {
+  "py": 15,
+  "reference": 15
+ },
+ "status": "success",
+ "keys_text": "== reference ==\n-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nmDMEawW+xxYJKwYBBAHaRw8BAQdA8fgtT8f2jcouhlNVyX1pzGWOnLyj2Adjpm6q\n0xZkB9O0E3RlbGVwaG9uZS1yZWZlcmVuY2WIkwQTFgoAOxYhBAp62h2rCBGon2gf\n/q/svbuuwlACBQJrBb7HAhsDBQsJCAcCAiICBhUKCQgLAgQWAgMBAh4HAheAAAoJ\nEK/svbuuwlACrM8BAOXn1FkW7cfi2YGRf0tr6x/r/+8b17dpnwYLrm0q3D2kAP9q\n8EE/ZOt1A74x6lAqUh6ezuSTQw5KFjgy0qAthmyBBg==\n=/QqY\n-----END PGP PUBLIC KEY BLOCK-----\n== py ==\n-----BEGIN PGP PUBLIC KEY BLOCK-----\n\nmDMEawW+xxYJKwYBBAHaRw8BAQdA5xoTGgxCY6OJw4wBxTxrRBMcBXpaQzSR7pNj\naxnkVFu0DHRlbGVwaG9uZS1weYiTBBMWCgA7FiEE3aZ+YtgJ5uY6ytAtqc9ZXPx9\ne4gFAmsFvscCGwMFCwkIBwICIgIGFQoJCAsCBBYCAwECHgcCF4AACgkQqc9ZXPx9\ne4joCAEAleqmpOf6gy4MQU5SBg5eEwoMHTGFXXJWny+hBMU8hn0A/AvKQSA7W2Lu\nrwBLj9qybr3Nh15DwSLb0krKbimrGFgF\n=/bnN\n-----END PGP PUBLIC KEY BLOCK-----\n",
+ "last_consensus": {
+  "reference": "pass",
+  "py": "pass"
+ }
+}

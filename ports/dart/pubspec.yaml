@@ -1,0 +1,6 @@
+name: libphext_dart
+description: A Dart port of libphext (0.6.1 parity) — 9-dimensional phext coordinates, phokenize/dephokenize, fetch/insert/replace/remove.
+version: 0.6.1
+environment:
+  sdk: ^3.0.0
+# No dependencies: the port is dart:core / dart:convert / dart:io only.

@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""Exocortical Telephone Game adapter (contract v2) for the fortran
+libphext port.
+
+Local python3 wrapper: the toolchain for this port runs only on the
+ranch hub (aletheia-core), so phext work is forwarded over fleet-ssh to
+this port's own CLI on the hub (wire protocol: one JSON object in, one
+JSON object out; state as base64). The hub CLI wraps only this port's
+own libphext — never another port's.
+
+Modes:
+  adapter serve            persistent: JSON lines on stdin/stdout,
+                           relayed to one persistent hub CLI process
+  adapter id               one-shot: implementation id (plain text)
+  adapter keygen           one-shot: ensure the port's PGP keypair in
+                           its key home on the hub; print pubkey JSON
+  adapter seek <root>      one-shot: find the Test of Will in the CYOA
+                           corpus by raw file I/O only (in-process byte
+                           reads; no search tools, no indexes)
+  adapter echo <ping.json> one-shot (debugging; the game uses serve)
+  adapter choose <state.phext> <position> <turn>
+  adapter apply <state.phext> <step.json> <out.phext>
+  adapter verify <stress.phext|dir>
+  adapter wire             forward one raw wire JSON object from stdin
+"""
+import base64
+import json
+import os
+import re
+import subprocess
+import sys
+
+IMPL = "fortran"
+FLEET_SSH = os.path.expanduser(
+    "~/workspace/bickford-llama-ranch/deploy/fleet-ssh.sh")
+REMOTE_CMD = ["/home/wbic16/telephone-fortran/telephone"]
+SEEK_TARGET = (13, 13, 13, 13, 13, 13, 13, 13, 13)
+SEEK_COORD = "13.13.13/13.13.13/13.13.13"
+
+
+def wire(request):
+    proc = subprocess.run(
+        [FLEET_SSH, "aletheia-core"] + REMOTE_CMD,
+        input=json.dumps(request).encode(),
+        stdout=subprocess.PIPE,
+        check=True,
+    )
+    lines = [ln for ln in proc.stdout.decode().splitlines() if ln.strip()]
+    return json.loads(lines[-1])
+
+
+# ------------------------------------------------------------------ serve
+def serve():
+    proc = subprocess.Popen(
+        [FLEET_SSH, "aletheia-core"] + REMOTE_CMD + ["serve"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    try:
+        for line in sys.stdin:
+            if not line.strip():
+                continue
+            req = json.loads(line)
+            out_path = None
+            if "state_path" in req:
+                # The driver addresses state by local path; the hub CLI
+                # speaks the wire protocol (state as base64). Translate
+                # at this boundary (cf. harness/adapter_base.py: local
+                # adapters receive state by path, SSH-wrapped ones as
+                # base64 — both are the contract).
+                with open(req.pop("state_path"), "rb") as f:
+                    req["state"] = base64.b64encode(f.read()).decode()
+            if req.get("cmd") == "apply" and "state_out_path" in req:
+                out_path = req.pop("state_out_path")
+            proc.stdin.write((json.dumps(req) + "\n").encode())
+            proc.stdin.flush()
+            resp = proc.stdout.readline()
+            if not resp:
+                break
+            if out_path is not None:
+                r = json.loads(resp)
+                if "state_b64" in r:
+                    with open(out_path, "wb") as f:
+                        f.write(base64.b64decode(r["state_b64"]))
+                    resp = (json.dumps(
+                        {"state_sha256": r["state_sha256"]}) + "\n").encode()
+            sys.stdout.write(resp.decode())
+            sys.stdout.flush()
+    finally:
+        try:
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
+        proc.terminate()
+
+
+# ------------------------------------------------------------------ seek
+# Raw file I/O only: directory entries are enumerated with os.scandir
+# and every candidate file is read in-process, byte by byte through the
+# phext break walker below (this port's own scanning code, mirroring
+# its libphext semantics). No grep/find subprocesses, no indexes.
+_RUN_RE = re.compile(rb"[^\x01\x17-\x1a\x1c-\x1f]+")
+_BREAK_DIM = {b: d for d, b in enumerate(b"\x01\x1f\x1e\x1d\x1c\x1a\x19\x18\x17")}
+
+
+def _apply_break(coord, d):
+    coord[d] += 1
+    for k in range(d + 1, 9):
+        coord[k] = 1
+
+
+def scan_chunks(chunks, target):
+    """Walk phext breaks over an iterable of byte chunks; return
+    (offset, text) of the scroll at target, or None."""
+    coord = [1] * 9
+    pending = bytearray()
+    run_start = None
+    run_coord = None
+    in_run = False
+    base = 0
+    for chunk in chunks:
+        pos = 0
+        for m in _RUN_RE.finditer(chunk):
+            for j in range(pos, m.start()):
+                if in_run:
+                    if tuple(run_coord) == target:
+                        return run_start, bytes(pending)
+                    in_run = False
+                    pending = bytearray()
+                _apply_break(coord, _BREAK_DIM[chunk[j]])
+            if not in_run:
+                in_run = True
+                run_coord = list(coord)
+                run_start = base + m.start()
+            pending += m.group()
+            pos = m.end()
+        for j in range(pos, len(chunk)):
+            if in_run:
+                if tuple(run_coord) == target:
+                    return run_start, bytes(pending)
+                in_run = False
+                pending = bytearray()
+            _apply_break(coord, _BREAK_DIM[chunk[j]])
+        base += len(chunk)
+    if in_run and tuple(run_coord) == target:
+        return run_start, bytes(pending)
+    return None
+
+
+def scan_file(path, target):
+    with open(path, "rb") as f:
+        chunks = iter(lambda: f.read(1 << 20), b"")
+        return scan_chunks(chunks, target)
+
+
+def iter_phext_files(root):
+    found = []
+    stack = [root]
+    while stack:
+        dirpath = stack.pop()
+        with os.scandir(dirpath) as it:
+            for entry in it:
+                if entry.is_dir(follow_symlinks=False):
+                    stack.append(entry.path)
+                elif entry.name.endswith(".phext") and entry.is_file(follow_symlinks=False):
+                    found.append(entry.path)
+    return sorted(found)
+
+
+def do_seek(root):
+    for path in iter_phext_files(root):
+        hit = scan_file(path, SEEK_TARGET)
+        if hit is not None:
+            offset, text = hit
+            title = text.split(b"\n", 1)[0].decode("utf-8", "replace")
+            print(json.dumps({"impl": IMPL, "path": path, "offset": offset,
+                              "coordinate": SEEK_COORD, "title": title}))
+            return 0
+    print("seek: Test of Will not found under %s" % root, file=sys.stderr)
+    return 1
+
+
+def fetch_scroll(path, coord):
+    data = open(path, "rb").read()
+    hit = scan_chunks([data], coord)
+    return hit[1] if hit else b""
+
+
+# ------------------------------------------------------------------ one-shot
+def cmd_id():
+    print(wire({"cmd": "id"})["impl"])
+
+
+def cmd_keygen():
+    print(json.dumps(wire({"cmd": "keygen"})))
+
+
+def cmd_echo(ping_path):
+    ping = json.loads(open(ping_path).read())
+    print(json.dumps(wire({"cmd": "echo", "ping": ping})))
+
+
+def cmd_choose(state_path, position, turn):
+    state = open(state_path, "rb").read()
+    resp = wire({"cmd": "choose",
+                 "state": base64.b64encode(state).decode(),
+                 "position": position, "turn": int(turn)})
+    print(json.dumps(resp))
+
+
+def cmd_apply(state_path, step_path, out_path):
+    state = open(state_path, "rb").read()
+    step = json.loads(open(step_path).read())
+    resp = wire({"cmd": "apply",
+                 "state": base64.b64encode(state).decode(),
+                 "step": step})
+    with open(out_path, "wb") as f:
+        f.write(base64.b64decode(resp["state_b64"]))
+    print(json.dumps({"state_sha256": resp["state_sha256"],
+                      "fetch_sha256": resp.get("fetch_sha256")}))
+
+
+def cmd_verify(path):
+    if os.path.isdir(path):
+        path = os.path.join(path, "stress.phext")
+    state = open(path, "rb").read()
+    pubkeys = fetch_scroll(path, (1, 1, 1, 1, 1, 1, 1, 1, 2)).decode("utf-8", "replace")
+    resp = wire({"cmd": "verify",
+                 "state": base64.b64encode(state).decode(),
+                 "pubkeys": pubkeys})
+    print(json.dumps(resp))
+
+
+def cmd_wire():
+    request = json.loads(sys.stdin.read())
+    print(json.dumps(wire(request)))
+
+
+def main(argv):
+    if len(argv) < 2:
+        print(__doc__, file=sys.stderr)
+        return 2
+    cmd = argv[1]
+    if cmd == "serve":
+        serve()
+    elif cmd == "id":
+        cmd_id()
+    elif cmd == "keygen":
+        cmd_keygen()
+    elif cmd == "seek":
+        return do_seek(argv[2])
+    elif cmd == "echo":
+        cmd_echo(argv[2])
+    elif cmd == "choose":
+        cmd_choose(argv[2], argv[3], argv[4])
+    elif cmd == "apply":
+        cmd_apply(argv[2], argv[3], argv[4])
+    elif cmd == "verify":
+        cmd_verify(argv[2])
+    elif cmd == "wire":
+        cmd_wire()
+    else:
+        print("unknown subcommand %s" % cmd, file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

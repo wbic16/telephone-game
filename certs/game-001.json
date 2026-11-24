@@ -1,0 +1,74 @@
+{
+  "game": "game-001",
+  "transcript_hash": "c0e96402a5f0e56a251915970adea470f5fdae5445836d185f522f0d79239eed",
+  "turns": 12,
+  "participants": [
+    "py",
+    "reference"
+  ],
+  "verdicts": {
+    "c": {
+      "verdict": "no-adapter",
+      "note": "wbic16/libphext (C) at 0.6.1; hub-execution approval already before Will from the v0.7.0 program (not re-asked)"
+    },
+    "cpp": {
+      "verdict": "no-adapter",
+      "note": "wbic16/libphext-cpp at 0.6.1; hub-execution approval already before Will from the v0.7.0 program (not re-asked)"
+    },
+    "cs": {
+      "verdict": "no-adapter",
+      "note": "wbic16/libphext-cs; adapter being built (hub, emise/v070-perf)"
+    },
+    "java": {
+      "verdict": "no-adapter",
+      "note": "wbic16/libphext-java; adapter being built (hub, emise/v070-perf)"
+    },
+    "kotlin": {
+      "verdict": "no-adapter",
+      "note": "wbic16/libphext-kotlin; adapter being built (hub, emise/v070-perf)"
+    },
+    "node": {
+      "verdict": "no-adapter",
+      "note": "wbic16/libphext-node (TypeScript; also covers TIOBE TypeScript); adapter being built (hub, emise/v070-perf)"
+    },
+    "py": {
+      "impl": "py",
+      "verdict": "pass",
+      "steps_checked": 12,
+      "first_failure": null
+    },
+    "reference": {
+      "impl": "reference",
+      "verdict": "pass",
+      "steps_checked": 12,
+      "first_failure": null
+    },
+    "rs": {
+      "verdict": "no-adapter",
+      "note": "wbic16/libphext-rs; adapter being built (hub, emise/v070-perf)"
+    },
+    "swift": {
+      "verdict": "no-adapter",
+      "note": "wbic16/libphext-swift; adapter being built (hub, emise/v070-perf)"
+    }
+  },
+  "result": "HOLD",
+  "reasons": [
+    "c: no adapter (not playing)",
+    "cpp: no adapter (not playing)",
+    "cs: no adapter (not playing)",
+    "java: no adapter (not playing)",
+    "kotlin: no adapter (not playing)",
+    "node: no adapter (not playing)",
+    "rs: no adapter (not playing)",
+    "swift: no adapter (not playing)",
+    "c: never took a turn (did not participate)",
+    "cpp: never took a turn (did not participate)",
+    "cs: never took a turn (did not participate)",
+    "java: never took a turn (did not participate)",
+    "kotlin: never took a turn (did not participate)",
+    "node: never took a turn (did not participate)",
+    "rs: never took a turn (did not participate)",
+    "swift: never took a turn (did not participate)"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+ "id": "go",
+ "adapter": "ports/go/adapter",
+ "status": "playing",
+ "kind": "port",
+ "note": "libphext Go port, 0.6.1 parity; built+tested on aletheia-core (Go 1.23.4 user-level at ~/tools/go); fixtures 16/16 input.phext byte-identical round-trips, normalize idempotent; adapter contract v2 self-test PASS (keygen/seek/elect/insert-only choose+apply/attest/validate/verify); cross-verified a Go-signed stress.phext in php/perl/fortran"
+}

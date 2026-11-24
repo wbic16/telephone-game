@@ -1,0 +1,14 @@
+placement 1 by py at 844.178.692/976.4.46/689.816.709
+placement 2 by reference at 844.178.693/976.4.46/689.816.709
+placement 3 by py at 844.178.693/976.4.46/689.816.710
+placement 500 by reference at 871.206.720/1004.32.74/717.843.986
+Traceback (most recent call last):
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 545, in <module>
+    main()
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 541, in main
+    args.f(args)
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 326, in cmd_play
+    serves[e["id"]].call({"cmd": "init", "state_path": game.file})
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 115, in call
+    raise RuntimeError("%s: %s" % (self.id, out["error"]))
+RuntimeError: fortran: unknown cmd

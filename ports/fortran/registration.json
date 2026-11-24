@@ -1,0 +1,7 @@
+{
+ "id": "fortran",
+ "adapter": "ports/fortran/adapter",
+ "status": "playing",
+ "kind": "port",
+ "note": "libphext Fortran port, 0.6.1 parity; built+tested on aletheia-core with user-level gfortran 13.3 (debs extracted under ~/telephone-fortran/root, no sudo); fixtures 16/16 input.phext byte-identical round-trips, normalize idempotent; adapter contract v2 self-test PASS (keygen/seek/elect/insert-only choose+apply/attest/validate/verify)"
+}
