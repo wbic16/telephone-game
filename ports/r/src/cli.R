@@ -85,6 +85,26 @@ b64decode <- function(s) {
   bytes
 }
 
+## Game-scale framing helper (2026-11-24): R's memCompress
+## (type="gzip") takes ~560 s on a 1.3 MB serve reply at 1,000
+## placements (measured on aletheia-core) -- with it, r's serve-mode
+## explode/validate appeared hung while unframed one-shot mode took
+## ~31 s. Frame with the system gzip(1) on temp files instead, like
+## the lua/fortran/awk/tcl ports. memDecompress stays for unframing:
+## it reads a framed request in ~4 ms.
+gz_frame <- function(text) {
+  fin <- tempfile()
+  con <- file(fin, "wb")
+  writeBin(text_to_raw(text), con)
+  close(con)
+  fb <- paste0(fin, ".b64")
+  system(sprintf("gzip -c %s | base64 -w0 > %s",
+                 shQuote(fin), shQuote(fb)))
+  enc <- paste(readLines(fb, warn = FALSE), collapse = "")
+  unlink(c(fin, fb))
+  paste0("GZ1:", enc)
+}
+
 ## ---------------------------------------------------------- mini JSON
 JSON_NULL <- structure(list(), class = "json_null")
 .jparse <- function(text) {
@@ -210,7 +230,34 @@ JSON_NULL <- structure(list(), class = "json_null")
   parse_value()
 }
 
+# Fast path for canonical = FALSE (2026-11-24): the per-codepoint
+# loop in .jstr_escape below costs ~28 s on the 1.3 MB explode map at
+# game scale (jwrite uses canonical = FALSE exclusively). This
+# vectorized form is byte-identical -- verified against the loop over
+# every key/value of the 1,000-placement snapshot map plus edge-case
+# strings. canonical = TRUE (canon(), used on small attest/event
+# structures) keeps the original loop untouched.
+.jstr_escape_fast <- function(s) {
+  cps <- utf8ToInt(enc2utf8(s))
+  n <- length(cps)
+  if (n == 0L) return('""')
+  parts <- character(n)
+  esc <- cps == 34L | cps == 92L | cps == 10L | cps == 13L |
+         cps == 9L | cps < 32L
+  if (any(!esc)) {
+    parts[!esc] <- intToUtf8(cps[!esc], multiple = TRUE)
+  }
+  if (any(esc)) {
+    ec <- cps[esc]
+    parts[esc] <- ifelse(ec == 34L, '\\"', ifelse(ec == 92L, '\\\\',
+      ifelse(ec == 10L, '\\n', ifelse(ec == 13L, '\\r',
+      ifelse(ec == 9L, '\\t', sprintf('\\u%04x', ec))))))
+  }
+  paste0('"', paste(parts, collapse = ""), '"')
+}
+
 .jstr_escape <- function(s, canonical) {
+  if (!canonical) return(.jstr_escape_fast(s))
   cps <- utf8ToInt(enc2utf8(s))
   parts <- character(0)
   for (cp in cps) {
@@ -792,9 +839,22 @@ main <- function() {
       if (length(line) == 0L) break
       line <- trimws(line)
       if (!nzchar(line)) next
+      # Game-scale framing (2026-11-24): lines over 8 KB may arrive
+      # gzip-framed as "GZ1:" + base64(gzip(line)) — the fleet-ssh
+      # channel is ~25-70 KB/s and raw base64 state lines took
+      # minutes at 1,000 placements. Base R memCompress/memDecompress
+      # do the gzip. Lossless; plain lines unchanged.
+      if (startsWith(line, "GZ1:")) {
+        line <- raw_to_text(memDecompress(b64decode(substring(line, 5L)),
+                                          type = "gzip"))
+      }
       resp <- tryCatch(dispatch(.jparse(line)),
                        error = function(e) list(error = conditionMessage(e)))
-      cat(jwrite(resp), "\n", sep = "")
+      out <- jwrite(resp)
+      if (nchar(out) > 8192L) {
+        out <- gz_frame(out)
+      }
+      cat(out, "\n", sep = "")
       flush.console()
     }
     return(invisible(NULL))

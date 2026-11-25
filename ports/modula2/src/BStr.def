@@ -1,0 +1,37 @@
+DEFINITION MODULE BStr;
+(* Growable byte strings for the Modula-2 libphext port. All phext and
+   wire data is handled as (pointer, length) byte strings; no NUL
+   termination is assumed anywhere. *)
+
+FROM SYSTEM IMPORT ADDRESS;
+
+TYPE
+  Bytes;  (* opaque: growable byte string *)
+
+PROCEDURE New () : Bytes;
+(* Address of the first data byte (for libc calls). *)
+PROCEDURE DataAddr (b : Bytes) : ADDRESS;
+PROCEDURE Dispose (VAR b : Bytes);
+PROCEDURE Clear (b : Bytes);
+PROCEDURE Len (b : Bytes) : CARDINAL;
+PROCEDURE Get (b : Bytes; i : CARDINAL) : CHAR;
+PROCEDURE Put (b : Bytes; i : CARDINAL; ch : CHAR);
+PROCEDURE AppendCh (b : Bytes; ch : CHAR);
+PROCEDURE AppendMem (b : Bytes; a : ADDRESS; n : CARDINAL);
+PROCEDURE AppendBytes (b : Bytes; s : Bytes);
+(* Append a string literal / CHAR array up to its 0C terminator. *)
+PROCEDURE AppendStr (b : Bytes; s : ARRAY OF CHAR);
+PROCEDURE AppendStrN (b : Bytes; s : ARRAY OF CHAR; n : CARDINAL);
+PROCEDURE Copy (s : Bytes) : Bytes;
+PROCEDURE FromStr (s : ARRAY OF CHAR) : Bytes;
+PROCEDURE Equal (a, b : Bytes) : BOOLEAN;
+PROCEDURE EqualStr (a : Bytes; s : ARRAY OF CHAR) : BOOLEAN;
+(* Byte-wise (unsigned) comparison: -1, 0, 1. *)
+PROCEDURE Compare (a, b : Bytes) : INTEGER;
+(* Write the byte at i as two lowercase hex digits appended to out. *)
+PROCEDURE AppendHexByte (out : Bytes; ch : CHAR);
+PROCEDURE AppendCardinal (out : Bytes; v : CARDINAL);
+(* Parse decimal digits starting at i; returns value, sets j past them. *)
+PROCEDURE ParseCardinal (b : Bytes; i : CARDINAL; VAR v : CARDINAL; VAR j : CARDINAL) : BOOLEAN;
+
+END BStr.

@@ -1,0 +1,7 @@
+{
+ "id": "nim",
+ "adapter": "ports/nim/adapter",
+ "status": "playing",
+ "kind": "port",
+ "note": "libphext Nim port, 0.6.1 parity; built+tested on aletheia-core (Nim 2.4.2 at ~/.nimble/bin, stdlib JSON/base64 + hand-written SHA-256 in src/wire.nim); fixtures 16/16 input.phext byte-identical round-trips, normalize idempotent; adapter contract v2 self-test PASS (keygen/seek/elect/insert-only choose+apply/attest/validate incl. driver-form cache validate/verify); serve init PASS; smoke-001 verify PASS / 30 placements"
+}

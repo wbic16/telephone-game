@@ -1,0 +1,7 @@
+{
+ "adapter": "ports/powershell/adapter",
+ "id": "powershell",
+ "kind": "port",
+ "note": "libphext-powershell (PowerShell 7.4.6 official Linux tarball, user-level in ~/telephone-powershell on aletheia-core; .NET stdlib only \u2014 hand-written JSON parser/canonical writer, SHA256, Convert base64, GzipStream; byte buffers at the API with an internal Latin-1 string walk). Suite green (82 checks, fixtures 16/16 byte-identical + 16/16 normalize-idempotent); remove is coordinate-preserving (gap, no renumbering) per libphext-py. v2 adapter self-test PASS; serve init (deferred cache) + driver-form validate pass; verify vs games/smoke-001/stress.phext PASS/30 verbatim {\"first_failure\": null, \"impl\": \"powershell\", \"placements_checked\": 30, \"verdict\": \"pass\"}. Game-scale (snapshot copy of games/test-001/stress.phext, 2.2 MB/1,000 placements): serve init pass in 0.13 s (driver timeout 30 s); serve validate (post-turn snapshot method) pass in 22.35 s (driver timeout 60 s). Wire framing GZ1 over 8 KB in adapter + hub CLI.",
+ "status": "playing"
+}

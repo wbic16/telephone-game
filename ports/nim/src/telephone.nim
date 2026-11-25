@@ -296,17 +296,39 @@ proc handle(req: JsonNode): JsonNode =
   of "verify": return verifyGame(stateBytes(req), req{"pubkeys"}.getStr())
   else: raise newException(ValueError, "unknown cmd " & cmd)
 
+# Game-scale framing (2026-11-24): lines over 8 KB may arrive gzip-framed as
+# "GZ1:" + base64(gzip(line)) — the fleet-ssh channel is ~25-70 KB/s
+# and raw base64 state lines took minutes at 1,000 placements. Nim
+# stdlib has no zlib, so (de)compression shells to the system
+# gzip(1) on a temp file. Lossless; plain lines unchanged.
+proc gzVia(data: string, args: seq[string]): string =
+  let (f, path) = createTempFile("gzframe", ".tmp")
+  f.write(data)
+  f.close()
+  let p = startProcess("gzip", args = args & @[path], options = {poUsePath})
+  result = p.outputStream.readAll()
+  discard p.waitForExit()
+  p.close()
+  removeFile(path)
+
+proc gzUnframe(s: string): string = gzVia(decode(s[4..^1]), @["-dc"])
+proc gzFrame(s: string): string = "GZ1:" & encode(gzVia(s, @["-c"]))
+
 when isMainModule:
   let args = commandLineParams()
   if args.len > 0 and args[0] == "serve":
     for line in stdin.lines:
-      if line.strip().len == 0: continue
+      var l = line.strip()
+      if l.len == 0: continue
+      if l.startsWith("GZ1:"): l = gzUnframe(l)
       var resp: JsonNode
       try:
-        resp = handle(parseJson(line))
+        resp = handle(parseJson(l))
       except CatchableError as e:
         resp = %*{"error": e.msg}
-      stdout.write(canon(resp) & "\n")
+      var outs = canon(resp)
+      if outs.len > 8192: outs = gzFrame(outs)
+      stdout.write(outs & "\n")
       stdout.flushFile()
   else:
     let raw = stdin.readAll()

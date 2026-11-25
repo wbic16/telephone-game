@@ -1,0 +1,7 @@
+{
+ "adapter": "ports/icon/adapter",
+ "id": "icon",
+ "kind": "port",
+ "note": "libphext-icon (Icon 9.5.1, user-level source build in ~/tools/icon on aletheia-core; Icon stdlib only -- hand-written JSON, explode/implode/insert/fetch + DynamicPhext + TransitivePhext in src/phext.icn + src/cli.icn; sha256/base64/gzip via standard CLI tools where Icon lacks them). Suite green (74 checks, fixtures 16/16 byte-identical + 16/16 normalize-idempotent); remove is coordinate-preserving (gap, no renumbering) per libphext-py. v2 adapter self-test PASS; one-shot verify vs games/smoke-001/stress.phext PASS/30 verbatim {\"first_failure\": null, \"impl\": \"icon\", \"placements_checked\": 30, \"verdict\": \"pass\"}. Game-scale (snapshot copy of games/test-001/stress.phext, 2,260,772 B / 1,004 placements, turn derived from snapshot): serve init pass 0.10 s (driver timeout 30 s), choose 9.60 s, apply 10.70 s (hash match), serve validate (post-turn snapshot method via scale-test-live.py) pass in 16.54 s (driver timeout 60 s). Wire framing GZ1 over 8 KB in adapter + hub CLI; serve init uses the deferred cache. Local source == hub CLI byte-identical (scp-synced).",
+ "status": "playing"
+}

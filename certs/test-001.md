@@ -1,0 +1,134 @@
+# Exocortical Stress Testing certificate — test-001
+
+- Result: **HOLD**
+- stress.phext sha256: `09e6c6b8279ff0adfb129c8e091ebe1cea4d2bcd4168679f0df5e82f35ed8d84`
+- Placements: 1017 (success unit: 10000 across the network)
+- Participants: reference, py
+- Placements by participant: {"py": 509, "reference": 508}
+
+## Cross-check verdicts
+
+- ada: no-adapter
+- algol: no-adapter
+- awk: no-adapter
+- bash: no-adapter
+- c: no-adapter
+- caml: no-adapter
+- cfml: no-adapter
+- clojure: no-adapter
+- cobol: no-adapter
+- cpp: no-adapter
+- crystal: no-adapter
+- cs: no-adapter
+- csh: no-adapter
+- d: no-adapter
+- dart: no-adapter
+- delphi: no-adapter
+- elixir: no-adapter
+- erlang: no-adapter
+- forth: no-adapter
+- fortran: no-adapter
+- fsharp: no-adapter
+- go: no-adapter
+- groovy: no-adapter
+- hack: no-adapter
+- haskell: no-adapter
+- icon: no-adapter
+- io: no-adapter
+- j: no-adapter
+- java: no-adapter
+- julia: no-adapter
+- kotlin: no-adapter
+- ksh: no-adapter
+- lisp: no-adapter
+- lua: no-adapter
+- ml: no-adapter
+- modula2: no-adapter
+- mojo: no-adapter
+- nim: no-adapter
+- node: no-adapter
+- objc: no-adapter
+- ocaml: no-adapter
+- perl: no-adapter
+- php: no-adapter
+- powershell: no-adapter
+- prolog: no-adapter
+- py: pass (1017 placements checked)
+- r: no-adapter
+- rexx: no-adapter
+- rs: no-adapter
+- ruby: no-adapter
+- scala: no-adapter
+- scheme: no-adapter
+- smalltalk: no-adapter
+- solidity: no-adapter
+- spark: no-adapter
+- swift: no-adapter
+- tcl: no-adapter
+- v: no-adapter
+- vala: no-adapter
+- vb: no-adapter
+
+## Hold reasons
+
+- ada: did not participate
+- algol: did not participate
+- awk: did not participate
+- bash: did not participate
+- c: did not participate
+- caml: did not participate
+- cfml: did not participate
+- clojure: did not participate
+- cobol: did not participate
+- cpp: did not participate
+- crystal: did not participate
+- cs: did not participate
+- csh: did not participate
+- d: did not participate
+- dart: did not participate
+- delphi: did not participate
+- elixir: did not participate
+- erlang: did not participate
+- forth: did not participate
+- fortran: did not participate
+- fsharp: did not participate
+- go: did not participate
+- groovy: did not participate
+- hack: did not participate
+- haskell: did not participate
+- icon: did not participate
+- io: did not participate
+- j: did not participate
+- java: did not participate
+- julia: did not participate
+- kotlin: did not participate
+- ksh: did not participate
+- lisp: did not participate
+- lua: did not participate
+- ml: did not participate
+- modula2: did not participate
+- mojo: did not participate
+- nim: did not participate
+- node: did not participate
+- objc: did not participate
+- ocaml: did not participate
+- perl: did not participate
+- php: did not participate
+- powershell: did not participate
+- prolog: did not participate
+- r: did not participate
+- rexx: did not participate
+- rs: did not participate
+- ruby: did not participate
+- scala: did not participate
+- scheme: did not participate
+- smalltalk: did not participate
+- solidity: did not participate
+- spark: did not participate
+- swift: did not participate
+- tcl: did not participate
+- v: did not participate
+- vala: did not participate
+- vb: did not participate
+- placements 1017 of 10000 (a full test is 10000)
+- test status: failure

@@ -62,6 +62,8 @@ use Phext;
 use JSON::PP ();
 use Digest::SHA qw(sha256 sha256_hex);
 use MIME::Base64 qw(encode_base64 decode_base64);
+use IO::Uncompress::Gunzip qw(gunzip);
+use IO::Compress::Gzip qw(gzip);
 use Encode qw(decode);
 use B ();
 use File::Temp qw(tempdir);
@@ -483,12 +485,28 @@ if ($serve) {
     while (my $line = <STDIN>) {
         $line =~ s/\r?\n$//;
         next if $line =~ /^\s*$/;
+        # Game-scale framing (2026-11-24): lines over 8 KB may arrive gzip-framed
+        # as "GZ1:" + base64(gzip(line)) — the fleet-ssh channel is
+        # ~25-70 KB/s and raw base64 state lines took minutes at
+        # 1,000 placements. Lossless; plain lines unchanged.
+        if (substr($line, 0, 4) eq 'GZ1:') {
+            my $raw = decode_base64(substr($line, 4));
+            my $plain;
+            gunzip(\$raw => \$plain) or die "gunzip failed";
+            $line = $plain;
+        }
         my $out = eval {
             my $req = $json->decode($line);
             handle($req);
         };
         $out = { error => $@ } if $@;
-        print $json->encode($out), "\n";
+        my $outj = $json->encode($out);
+        if (length($outj) > 8192) {
+            my $gz;
+            gzip(\$outj => \$gz) or die "gzip failed";
+            $outj = 'GZ1:' . encode_base64($gz, '');
+        }
+        print $outj, "\n";
     }
     exit 0;
 }

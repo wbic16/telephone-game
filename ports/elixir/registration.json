@@ -1,0 +1,7 @@
+{
+ "adapter": "ports/elixir/adapter",
+ "id": "elixir",
+ "kind": "port",
+ "note": "libphext-elixir (Elixir 1.21.0-dev main-otp-27 on Erlang/OTP 27.3.4.20 via asdf, user-level in ~/tools/asdf-data on aletheia-core, shared with the erlang port; stdlib only -- hand-written JSON, :crypto SHA-256, Base base64, :zlib gzip). Suite green (74 checks, fixtures 16/16 byte-identical + 16/16 normalize-idempotent); remove is coordinate-preserving (gap, no renumbering) per libphext-py. v2 adapter self-test PASS; one-shot verify vs games/smoke-001/stress.phext PASS/30 verbatim {\"first_failure\": null, \"impl\": \"elixir\", \"placements_checked\": 30, \"verdict\": \"pass\"}. Game-scale (snapshot copy of games/test-001/stress.phext as inscribed after turn 1001, 2,240,276 B / 1,001 placements): FULL serve audit -- init pass 0.06 s (driver timeout 30 s), echo 2.56 s, elect 0.14 s, choose 8.70 s, apply 5.75 s (hash match), attest 0.17 s (per-call window 15 s), serve verify pass/1001 in 23.64 s, serve validate (post-turn snapshot method) pass in 10.17 s (driver timeout 60 s). Wire framing GZ1 over 8 KB in adapter + hub CLI; serve init uses the deferred cache. Local source == hub CLI byte-identical (md5 verified).",
+ "status": "playing"
+}

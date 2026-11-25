@@ -1,0 +1,262 @@
+{
+  "game": "test-001",
+  "stress_sha256": "09e6c6b8279ff0adfb129c8e091ebe1cea4d2bcd4168679f0df5e82f35ed8d84",
+  "placements": 1017,
+  "participants": [
+    "reference",
+    "py"
+  ],
+  "placements_by": {
+    "py": 509,
+    "reference": 508
+  },
+  "verdicts": {
+    "ada": {
+      "verdict": "no-adapter"
+    },
+    "algol": {
+      "verdict": "no-adapter"
+    },
+    "awk": {
+      "verdict": "no-adapter"
+    },
+    "bash": {
+      "verdict": "no-adapter"
+    },
+    "c": {
+      "verdict": "no-adapter"
+    },
+    "caml": {
+      "verdict": "no-adapter"
+    },
+    "cfml": {
+      "verdict": "no-adapter"
+    },
+    "clojure": {
+      "verdict": "no-adapter"
+    },
+    "cobol": {
+      "verdict": "no-adapter"
+    },
+    "cpp": {
+      "verdict": "no-adapter"
+    },
+    "crystal": {
+      "verdict": "no-adapter"
+    },
+    "cs": {
+      "verdict": "no-adapter"
+    },
+    "csh": {
+      "verdict": "no-adapter"
+    },
+    "d": {
+      "verdict": "no-adapter"
+    },
+    "dart": {
+      "verdict": "no-adapter"
+    },
+    "delphi": {
+      "verdict": "no-adapter"
+    },
+    "elixir": {
+      "verdict": "no-adapter"
+    },
+    "erlang": {
+      "verdict": "no-adapter"
+    },
+    "forth": {
+      "verdict": "no-adapter"
+    },
+    "fortran": {
+      "verdict": "no-adapter"
+    },
+    "fsharp": {
+      "verdict": "no-adapter"
+    },
+    "go": {
+      "verdict": "no-adapter"
+    },
+    "groovy": {
+      "verdict": "no-adapter"
+    },
+    "hack": {
+      "verdict": "no-adapter"
+    },
+    "haskell": {
+      "verdict": "no-adapter"
+    },
+    "icon": {
+      "verdict": "no-adapter"
+    },
+    "io": {
+      "verdict": "no-adapter"
+    },
+    "j": {
+      "verdict": "no-adapter"
+    },
+    "java": {
+      "verdict": "no-adapter"
+    },
+    "julia": {
+      "verdict": "no-adapter"
+    },
+    "kotlin": {
+      "verdict": "no-adapter"
+    },
+    "ksh": {
+      "verdict": "no-adapter"
+    },
+    "lisp": {
+      "verdict": "no-adapter"
+    },
+    "lua": {
+      "verdict": "no-adapter"
+    },
+    "ml": {
+      "verdict": "no-adapter"
+    },
+    "modula2": {
+      "verdict": "no-adapter"
+    },
+    "mojo": {
+      "verdict": "no-adapter"
+    },
+    "nim": {
+      "verdict": "no-adapter"
+    },
+    "node": {
+      "verdict": "no-adapter"
+    },
+    "objc": {
+      "verdict": "no-adapter"
+    },
+    "ocaml": {
+      "verdict": "no-adapter"
+    },
+    "perl": {
+      "verdict": "no-adapter"
+    },
+    "php": {
+      "verdict": "no-adapter"
+    },
+    "powershell": {
+      "verdict": "no-adapter"
+    },
+    "prolog": {
+      "verdict": "no-adapter"
+    },
+    "py": {
+      "impl": "py",
+      "verdict": "pass",
+      "placements_checked": 1017,
+      "first_failure": null
+    },
+    "r": {
+      "verdict": "no-adapter"
+    },
+    "rexx": {
+      "verdict": "no-adapter"
+    },
+    "rs": {
+      "verdict": "no-adapter"
+    },
+    "ruby": {
+      "verdict": "no-adapter"
+    },
+    "scala": {
+      "verdict": "no-adapter"
+    },
+    "scheme": {
+      "verdict": "no-adapter"
+    },
+    "smalltalk": {
+      "verdict": "no-adapter"
+    },
+    "solidity": {
+      "verdict": "no-adapter"
+    },
+    "spark": {
+      "verdict": "no-adapter"
+    },
+    "swift": {
+      "verdict": "no-adapter"
+    },
+    "tcl": {
+      "verdict": "no-adapter"
+    },
+    "v": {
+      "verdict": "no-adapter"
+    },
+    "vala": {
+      "verdict": "no-adapter"
+    },
+    "vb": {
+      "verdict": "no-adapter"
+    }
+  },
+  "result": "HOLD",
+  "reasons": [
+    "ada: did not participate",
+    "algol: did not participate",
+    "awk: did not participate",
+    "bash: did not participate",
+    "c: did not participate",
+    "caml: did not participate",
+    "cfml: did not participate",
+    "clojure: did not participate",
+    "cobol: did not participate",
+    "cpp: did not participate",
+    "crystal: did not participate",
+    "cs: did not participate",
+    "csh: did not participate",
+    "d: did not participate",
+    "dart: did not participate",
+    "delphi: did not participate",
+    "elixir: did not participate",
+    "erlang: did not participate",
+    "forth: did not participate",
+    "fortran: did not participate",
+    "fsharp: did not participate",
+    "go: did not participate",
+    "groovy: did not participate",
+    "hack: did not participate",
+    "haskell: did not participate",
+    "icon: did not participate",
+    "io: did not participate",
+    "j: did not participate",
+    "java: did not participate",
+    "julia: did not participate",
+    "kotlin: did not participate",
+    "ksh: did not participate",
+    "lisp: did not participate",
+    "lua: did not participate",
+    "ml: did not participate",
+    "modula2: did not participate",
+    "mojo: did not participate",
+    "nim: did not participate",
+    "node: did not participate",
+    "objc: did not participate",
+    "ocaml: did not participate",
+    "perl: did not participate",
+    "php: did not participate",
+    "powershell: did not participate",
+    "prolog: did not participate",
+    "r: did not participate",
+    "rexx: did not participate",
+    "rs: did not participate",
+    "ruby: did not participate",
+    "scala: did not participate",
+    "scheme: did not participate",
+    "smalltalk: did not participate",
+    "solidity: did not participate",
+    "spark: did not participate",
+    "swift: did not participate",
+    "tcl: did not participate",
+    "v: did not participate",
+    "vala: did not participate",
+    "vb: did not participate",
+    "placements 1017 of 10000 (a full test is 10000)",
+    "test status: failure"
+  ]
+}

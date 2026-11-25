@@ -90,6 +90,61 @@ _walker_str() {
     WS="${W[1]},${W[2]},${W[3]},${W[4]},${W[5]},${W[6]},${W[7]},${W[8]},${W[9]}"
 }
 
+_encode_breaks() {
+    # $1 data -> ENC: escape the sentinel byte 0x02 by doubling and
+    # encode each dimension break as 0x02<digit>. The substitutions
+    # run in 16 KB chunks, joined in one expansion: a whole-string
+    # ${var//pat/rep} pass costs per-replacement x whole-string, so
+    # on a game-scale state (~1.3M break bytes in 2.2 MB) the nine
+    # unchunked passes took ~67 s where the chunked form takes ~2 s,
+    # byte-identical (all patterns are single bytes, so no match can
+    # straddle a chunk boundary).
+    local data=$1 n=${#1} pos=0 chunk d i
+    local -a pieces=()
+    ENC=""
+    # Run-length tiers (only when the data holds no literal 0x02 --
+    # see phokenize): precompute, per dimension, the pattern of ten
+    # consecutive single-break markers and its token replacement.
+    # T1 letters a-i = x10, T2 letters j-r = x100, T3 letters A-I =
+    # x1000. A tier pattern that straddles a chunk boundary simply
+    # does not collapse there; the uncollapsed markers are still
+    # valid single-break markers in the joined stream, so chunking
+    # stays exact.
+    local tiers=0
+    local -a TP1=() TP2=() TP3=() TR1=() TR2=() TR3=()
+    local T1S="abcdefghi" T2S="jklmnopqr" T3S="ABCDEFGHI"
+    if [[ $data != *$'\x02'* ]]; then
+        tiers=1
+        for d in 0 1 2 3 4 5 6 7 8; do
+            TP1[$d]=""; TP2[$d]=""; TP3[$d]=""
+            for (( i = 0; i < 10; i++ )); do
+                TP1[$d]+=$'\x02'"$d"
+                TP2[$d]+=$'\x02'"${T1S:$d:1}"
+                TP3[$d]+=$'\x02'"${T2S:$d:1}"
+            done
+            TR1[$d]=$'\x02'"${T1S:$d:1}"
+            TR2[$d]=$'\x02'"${T2S:$d:1}"
+            TR3[$d]=$'\x02'"${T3S:$d:1}"
+        done
+    fi
+    while (( pos < n )); do
+        chunk=${data:pos:16384}
+        chunk=${chunk//$'\x02'/$'\x02\x02'}
+        for d in 0 1 2 3 4 5 6 7 8; do
+            chunk=${chunk//${BRKBYTES[$d]}/$'\x02'"$d"}
+        done
+        if (( tiers )); then
+            for d in 0 1 2 3 4 5 6 7 8; do chunk=${chunk//${TP1[$d]}/${TR1[$d]}}; done
+            for d in 0 1 2 3 4 5 6 7 8; do chunk=${chunk//${TP2[$d]}/${TR2[$d]}}; done
+            for d in 0 1 2 3 4 5 6 7 8; do chunk=${chunk//${TP3[$d]}/${TR3[$d]}}; done
+        fi
+        pieces+=("$chunk")
+        pos=$((pos + 16384))
+    done
+    local IFS=''
+    ENC="${pieces[*]}"
+}
+
 phokenize() {
     # Fast walker: escape the sentinel byte 0x02 by doubling, encode
     # each dimension break as 0x02<digit>, then split on 0x02 (the
@@ -99,19 +154,77 @@ phokenize() {
     # a part starting with a digit is a break marker whose remainder
     # is the next run. A trailing 0x03 guard byte keeps the final
     # field alive through read -a and is stripped at the end.
-    local data=$1 enc=$1 d
-    enc=${enc//$'\x02'/$'\x02\x02'}
-    for d in 0 1 2 3 4 5 6 7 8; do
-        enc=${enc//${BRKBYTES[$d]}/$'\x02'"$d"}
-    done
+    local data=$1 enc d
+    _encode_breaks "$data"
+    enc=$ENC
     enc+=$'\x03'
     local -a parts=()
-    IFS=$'\x02' read -r -d '' -a parts < <(printf '%s' "$enc") || true
+    # word splitting (C speed) on the sentinel; globbing off so scroll
+    # text is never treated as a pattern
+    local oldifs=$IFS
+    IFS=$'\x02'
+    set -f
+    parts=($enc)
+    set +f
+    IFS=$oldifs
     PH_N=0
     PH_COORD=(); PH_TEXT=()
     W=(x 1 1 1 1 1 1 1 1 1)
-    local cur="" cont=1 part dim
+    # Walker state in scalars (w1..w9 = coordinate components):
+    # array indexing and function calls per break cost ~10-30 us,
+    # and a canonical game state holds ~1.3M breaks; scalar case
+    # arms apply a break (increment + unrolled resets) inline.
+    # Marker chars: digit d = one break at dimension d; when the
+    # encoder's run-length tiers are active (data held no literal
+    # 0x02, so every 0x02 in the stream is a genuine marker -- with
+    # a literal 0x02 present, an escape pair followed by digit text
+    # could masquerade as a marker run, so the tiers stay off and
+    # these arms simply never fire), a-i = x10 breaks, j-r = x100,
+    # A-I = x1000, letter offset = dimension.
+    local cur="" cont=1 part dim d mult
+    local w1=1 w2=1 w3=1 w4=1 w5=1 w6=1 w7=1 w8=1 w9=1
     for part in "${parts[@]}"; do
+        if (( ! cont )) && [[ -z $cur ]]; then
+            # pure break marker, no pending text: fast path
+            case $part in
+                0) w1=$((w1+1)); w2=1 w3=1 w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                1) w2=$((w2+1)); w3=1 w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                2) w3=$((w3+1)); w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                3) w4=$((w4+1)); w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                4) w5=$((w5+1)); w6=1 w7=1 w8=1 w9=1; continue;;
+                5) w6=$((w6+1)); w7=1 w8=1 w9=1; continue;;
+                6) w7=$((w7+1)); w8=1 w9=1; continue;;
+                7) w8=$((w8+1)); w9=1; continue;;
+                8) w9=$((w9+1)); continue;;
+                a) w1=$((w1+10)); w2=1 w3=1 w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                b) w2=$((w2+10)); w3=1 w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                c) w3=$((w3+10)); w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                d) w4=$((w4+10)); w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                e) w5=$((w5+10)); w6=1 w7=1 w8=1 w9=1; continue;;
+                f) w6=$((w6+10)); w7=1 w8=1 w9=1; continue;;
+                g) w7=$((w7+10)); w8=1 w9=1; continue;;
+                h) w8=$((w8+10)); w9=1; continue;;
+                i) w9=$((w9+10)); continue;;
+                j) w1=$((w1+100)); w2=1 w3=1 w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                k) w2=$((w2+100)); w3=1 w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                l) w3=$((w3+100)); w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                m) w4=$((w4+100)); w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                n) w5=$((w5+100)); w6=1 w7=1 w8=1 w9=1; continue;;
+                o) w6=$((w6+100)); w7=1 w8=1 w9=1; continue;;
+                p) w7=$((w7+100)); w8=1 w9=1; continue;;
+                q) w8=$((w8+100)); w9=1; continue;;
+                r) w9=$((w9+100)); continue;;
+                A) w1=$((w1+1000)); w2=1 w3=1 w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                B) w2=$((w2+1000)); w3=1 w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                C) w3=$((w3+1000)); w4=1 w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                D) w4=$((w4+1000)); w5=1 w6=1 w7=1 w8=1 w9=1; continue;;
+                E) w5=$((w5+1000)); w6=1 w7=1 w8=1 w9=1; continue;;
+                F) w6=$((w6+1000)); w7=1 w8=1 w9=1; continue;;
+                G) w7=$((w7+1000)); w8=1 w9=1; continue;;
+                H) w8=$((w8+1000)); w9=1; continue;;
+                I) w9=$((w9+1000)); continue;;
+            esac
+        fi
         if (( cont )); then
             cur+=$part
             cont=0
@@ -123,18 +236,44 @@ phokenize() {
             continue
         fi
         dim=${part:0:1}
+        case $dim in
+            [0-8]) d=$dim; mult=1;;
+            a) d=0; mult=10;; b) d=1; mult=10;; c) d=2; mult=10;;
+            d) d=3; mult=10;; e) d=4; mult=10;; f) d=5; mult=10;;
+            g) d=6; mult=10;; h) d=7; mult=10;; i) d=8; mult=10;;
+            j) d=0; mult=100;; k) d=1; mult=100;; l) d=2; mult=100;;
+            m) d=3; mult=100;; n) d=4; mult=100;; o) d=5; mult=100;;
+            p) d=6; mult=100;; q) d=7; mult=100;; r) d=8; mult=100;;
+            A) d=0; mult=1000;; B) d=1; mult=1000;; C) d=2; mult=1000;;
+            D) d=3; mult=1000;; E) d=4; mult=1000;; F) d=5; mult=1000;;
+            G) d=6; mult=1000;; H) d=7; mult=1000;; I) d=8; mult=1000;;
+            *) d=0; mult=0;;
+        esac
         if [[ -n $cur ]]; then
             PH_N=$((PH_N + 1))
-            _walker_str; PH_COORD[$PH_N]=$WS; PH_TEXT[$PH_N]=$cur
+            PH_COORD[$PH_N]="$w1,$w2,$w3,$w4,$w5,$w6,$w7,$w8,$w9"; PH_TEXT[$PH_N]=$cur
         fi
-        _apply_break "$dim"
+        if (( mult )); then
+            case $d in
+                0) w1=$((w1+mult)); w2=1 w3=1 w4=1 w5=1 w6=1 w7=1 w8=1 w9=1;;
+                1) w2=$((w2+mult)); w3=1 w4=1 w5=1 w6=1 w7=1 w8=1 w9=1;;
+                2) w3=$((w3+mult)); w4=1 w5=1 w6=1 w7=1 w8=1 w9=1;;
+                3) w4=$((w4+mult)); w5=1 w6=1 w7=1 w8=1 w9=1;;
+                4) w5=$((w5+mult)); w6=1 w7=1 w8=1 w9=1;;
+                5) w6=$((w6+mult)); w7=1 w8=1 w9=1;;
+                6) w7=$((w7+mult)); w8=1 w9=1;;
+                7) w8=$((w8+mult)); w9=1;;
+                8) w9=$((w9+mult));;
+            esac
+        fi
         cur=${part:1}
     done
     cur=${cur%$'\x03'}
     if [[ -n $cur ]]; then
         PH_N=$((PH_N + 1))
-        _walker_str; PH_COORD[$PH_N]=$WS; PH_TEXT[$PH_N]=$cur
+        PH_COORD[$PH_N]="$w1,$w2,$w3,$w4,$w5,$w6,$w7,$w8,$w9"; PH_TEXT[$PH_N]=$cur
     fi
+    W=(x $w1 $w2 $w3 $w4 $w5 $w6 $w7 $w8 $w9)
 }
 
 _advance() {

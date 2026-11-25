@@ -73,6 +73,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/sha256"
+	"compress/gzip"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -626,6 +627,31 @@ func (r *request) stateBytes() []byte {
 	return b64decode(r.StateB64)
 }
 
+// Game-scale framing (2026-11-24): serve lines over 8 KB may arrive
+// gzip-framed as "GZ1:" + base64(gzip(line)) — the fleet-ssh channel
+// is ~25-70 KB/s and raw base64 state lines took minutes at 1,000
+// placements. Lossless; plain lines unchanged.
+func gzUnframe(line []byte) ([]byte, error) {
+	raw, err := base64.StdEncoding.DecodeString(string(line[4:]))
+	if err != nil {
+		return nil, err
+	}
+	r, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return io.ReadAll(r)
+}
+
+func gzFrame(b []byte) []byte {
+	var buf bytes.Buffer
+	w := gzip.NewWriter(&buf)
+	w.Write(b)
+	w.Close()
+	return append([]byte("GZ1:"), base64.StdEncoding.EncodeToString(buf.Bytes())...)
+}
+
 func emit(w io.Writer, v interface{}) {
 	enc, _ := json.Marshal(v)
 	w.Write(enc)
@@ -718,12 +744,22 @@ func main() {
 			line, err := reader.ReadBytes('\n')
 			line = bytes.TrimRight(line, "\r\n")
 			if len(line) > 0 {
-				resp, herr := handle(line)
-				if herr != nil {
-					emit(os.Stdout, map[string]string{"error": herr.Error()})
-				} else {
-					emit(os.Stdout, resp)
+				if bytes.HasPrefix(line, []byte("GZ1:")) {
+					if plain, derr := gzUnframe(line); derr == nil {
+						line = plain
+					}
 				}
+				resp, herr := handle(line)
+				var out []byte
+				if herr != nil {
+					out, _ = json.Marshal(map[string]string{"error": herr.Error()})
+				} else {
+					out, _ = json.Marshal(resp)
+				}
+				if len(out) > 8192 {
+					out = gzFrame(out)
+				}
+				os.Stdout.Write(append(out, '\n'))
 			}
 			if err != nil {
 				return

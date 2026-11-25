@@ -1,0 +1,528 @@
+## libphext-icon -- an Icon port of libphext (0.6.1 parity).
+##
+## Semantics normative from libphext-py: a phext is a byte buffer;
+## nine dimension-break bytes walk a 9-component coordinate; scroll
+## text is a maximal run of non-break bytes (newline 0x0A is ordinary
+## text). Buffers are Icon strings (bytes 0-255); coordinates are
+## lists of 9 integers, ordered lexicographically; string form
+## a.b.c/d.e.f/g.h.i.
+##
+## REMOVE IS COORDINATE-PRESERVING: remove replaces a scroll with ""
+## and normalizes -- the removed coordinate reads "" afterwards and
+## its neighbours keep their coordinates (a gap, never renumbering).
+
+global BREAKBYTES, BREAKDIM
+
+procedure phext_init_globals()
+  static done
+  if \done then return
+  done := 1
+  BREAKBYTES := [1, 31, 30, 29, 28, 26, 25, 24, 23]
+  BREAKDIM := table()
+  every d := 0 to 8 do BREAKDIM[char(BREAKBYTES[d + 1])] := d
+  return
+end
+
+procedure coord_root()
+  return [1, 1, 1, 1, 1, 1, 1, 1, 1]
+end
+
+procedure str_split(s, ch)
+  local out, i
+  out := []
+  while i := find(ch, s) do {
+    put(out, s[1:i])
+    s := s[i + 1:*s + 1]
+  }
+  put(out, s)
+  return out
+end
+
+procedure coord_parse(s)
+  local groups, nums, g, parts, v
+  s := trim(s)
+  groups := str_split(s, '/')
+  if *groups ~= 3 then fail
+  nums := []
+  every g := !groups do {
+    parts := str_split(g, '.')
+    every v := !parts do {
+      v := integer(v) | fail
+      if v < 1 then fail
+      put(nums, v)
+    }
+  }
+  if *nums ~= 9 then fail
+  return nums
+end
+
+procedure coord_string(c)
+  return c[1] || "." || c[2] || "." || c[3] || "/" ||
+         c[4] || "." || c[5] || "." || c[6] || "/" ||
+         c[7] || "." || c[8] || "." || c[9]
+end
+
+## fixed-width key: lexicographic string order == coordinate order
+procedure coord_key(c)
+  local k, i
+  k := ""
+  every i := 1 to 9 do k ||:= right(c[i], 12, "0")
+  return k
+end
+
+procedure coord_compare(a, b)
+  local i
+  every i := 1 to 9 do
+    if a[i] ~= b[i] then return (if a[i] < b[i] then -1 else 1)
+  return 0
+end
+
+procedure coord_apply_break(c, d)   ## d is 0-based dimension
+  local out, i
+  out := []
+  every i := 1 to d do put(out, c[i])
+  put(out, c[d + 1] + 1)
+  every i := d + 2 to 9 do put(out, 1)
+  return out
+end
+
+## phokenize: buffer -> list of [coord, text]
+procedure phokenize(buffer)
+  local scrolls, coord, runstart, i, d, j
+  phext_init_globals()
+  scrolls := []
+  coord := coord_root()
+  runstart := 1
+  i := 1
+  while i <= *buffer do {
+    d := BREAKDIM[buffer[i]]
+    if \d then {
+      if i > runstart then
+        put(scrolls, [copy(coord), buffer[runstart:i]])
+      ## apply the break in place (coord is copied at emission)
+      coord[d + 1] +:= 1
+      every j := d + 2 to 9 do coord[j] := 1
+      runstart := i + 1
+    }
+    i +:= 1
+  }
+  if runstart <= *buffer then
+    put(scrolls, [copy(coord), buffer[runstart:*buffer + 1]])
+  return scrolls
+end
+
+procedure emit_advance(loc, target, out)
+  ## returns [newloc, newout]: out plus the break bytes moving loc
+  ## to target (unchanged when loc is not behind target)
+  local dim, i
+  if coord_compare(loc, target) >= 0 then return [loc, out]
+  dim := 1
+  while loc[dim] = target[dim] do dim +:= 1
+  out ||:= repl(char(BREAKBYTES[dim]), target[dim] - loc[dim])
+  every i := dim + 1 to 9 do
+    if target[i] > 1 then out ||:= repl(char(BREAKBYTES[i]), target[i] - 1)
+  return [target, out]
+end
+
+## dephokenize of a list of [coord, text]; sorted unless keeporder
+procedure dephokenize(stack, keeporder)
+  local keyed, e, loc, out, text, adv, kt, pairs, pr
+  phext_init_globals()
+  keyed := []
+  if /keeporder then {
+    kt := table()
+    every e := !stack do kt[coord_key(e[1])] := e
+    pairs := sort(kt)
+    every pr := !pairs do put(keyed, pr[2])
+  } else
+    keyed := stack
+  loc := coord_root()
+  out := ""
+  every e := !keyed do {
+    text := e[2]
+    if *text > 0 then {
+      adv := emit_advance(loc, e[1], out)
+      loc := adv[1]
+      out := adv[2] || text
+    }
+  }
+  return out
+end
+
+procedure normalize(buffer)
+  return dephokenize(phokenize(buffer))
+end
+
+procedure phext_fetch(buffer, coord)
+  local ps
+  every ps := !phokenize(buffer) do
+    if coord_compare(ps[1], coord) = 0 then return ps[2]
+  return ""
+end
+
+procedure phext_update(buffer, coord, scroll, overwrite)
+  local items, acc, appended, ps, cmp, merged
+  items := phokenize(buffer)
+  acc := []
+  appended := &null
+  every ps := !items do {
+    cmp := coord_compare(ps[1], coord)
+    if (cmp > 0) & /appended then {
+      put(acc, [coord, scroll])
+      appended := 1
+      put(acc, ps)
+    } else if (cmp = 0) & /appended then {
+      merged := if \overwrite then scroll else ps[2] || scroll
+      put(acc, [coord, merged])
+      appended := 1
+    } else
+      put(acc, ps)
+  }
+  if /appended then put(acc, [coord, scroll])
+  return dephokenize(acc, 1)
+end
+
+## insert: existing text is prepended to the inserted text.
+procedure phext_insert(buffer, coord, scroll)
+  return phext_update(buffer, coord, scroll, &null)
+end
+
+procedure phext_replace(buffer, coord, scroll)
+  return phext_update(buffer, coord, scroll, 1)
+end
+
+## remove: replace with "" then normalize -- coordinate-preserving.
+procedure phext_remove(buffer, coord)
+  return normalize(phext_update(buffer, coord, "", 1))
+end
+
+## explode: table coord-string -> [coord, text]
+procedure phext_explode(buffer)
+  local t, ps
+  t := table()
+  every ps := !phokenize(buffer) do t[coord_string(ps[1])] := ps
+  return t
+end
+
+procedure phext_implode(tbl)
+  local stack, k
+  stack := []
+  every k := key(tbl) do put(stack, tbl[k])
+  return dephokenize(stack)
+end
+
+## ------------------------------------------------------------------
+## DynamicPhext: capacity-managed dynamic array scroll store.
+## Start at capacity 1, double when full on append, shrink only at
+## quarter load (never half -- that thrashes). Icon lists are the
+## backing array; capacity/resize bookkeeping mirrors the discipline
+## of phext.dynamic exactly.
+record DynamicStore(data, n, cap, rc, ec, div)
+
+procedure dynamic_new(buffer, divisor)
+  local dp
+  divisor := \divisor | 4
+  if divisor < 2 then runerr(1, "shrink_divisor must be >= 2")
+  dp := DynamicStore([], 0, 1, 0, 0, divisor)
+  if *buffer > 0 then dynamic_load(dp, buffer)
+  return dp
+end
+
+procedure dynamic_resize(dp, newcap)
+  dp.cap := newcap
+  dp.rc +:= 1
+  dp.ec +:= dp.n
+  return dp
+end
+
+procedure dynamic_grow(dp)
+  if dp.n = dp.cap then dynamic_resize(dp, 2 * dp.cap)
+  return dp
+end
+
+procedure dynamic_shrink(dp)
+  if dp.cap > 1 & dp.n <= integer(dp.cap / dp.div) then
+    dynamic_resize(dp, maximum(1, integer(dp.cap / 2)))
+  return dp
+end
+
+procedure dynamic_push(dp, ps)
+  dynamic_grow(dp)
+  put(dp.data, ps)
+  dp.n +:= 1
+  return dp
+end
+
+procedure dynamic_load(dp, buffer)
+  local ps
+  dp.data := []
+  dp.n := 0
+  dp.cap := 1
+  dp.rc := 0
+  dp.ec := 0
+  every ps := !phokenize(buffer) do dynamic_push(dp, ps)
+  return dp
+end
+
+procedure dynamic_length(dp)
+  return dp.n
+end
+
+procedure dynamic_capacity(dp)
+  return dp.cap
+end
+
+procedure dynamic_resize_count(dp)
+  return dp.rc
+end
+
+procedure dynamic_scrolls(dp)
+  local out, i
+  out := []
+  every i := 1 to dp.n do put(out, dp.data[i])
+  return out
+end
+
+procedure dynamic_serialize(dp)
+  return dephokenize(dynamic_scrolls(dp))
+end
+
+## returns [index, found] -- index is 1-based position or insert point
+procedure dynamic_find(dp, coord)
+  local lo, hi, mid, cmp
+  lo := 1
+  hi := dp.n + 1
+  while lo < hi do {
+    mid := (lo + hi) / 2
+    cmp := coord_compare(dp.data[mid][1], coord)
+    if cmp < 0 then lo := mid + 1
+    else if cmp > 0 then hi := mid
+    else return [mid, 1]
+  }
+  return [lo, &null]
+end
+
+procedure dynamic_fetch(dp, coord)
+  local f
+  f := dynamic_find(dp, coord)
+  return if \f[2] then dp.data[f[1]][2] else ""
+end
+
+procedure dynamic_contains(dp, coord)
+  return if \dynamic_find(dp, coord)[2] then 1 else &null
+end
+
+procedure dynamic_append(dp, coord, text)
+  if dp.n > 0 & coord_compare(coord, dp.data[dp.n][1]) <= 0 then
+    runerr(1, "append requires a coordinate past the current tail")
+  if *text = 0 then return dp
+  return dynamic_push(dp, [coord, text])
+end
+
+procedure dynamic_remove_at(dp, idx)
+  local out, i
+  out := []
+  every i := 1 to dp.n do
+    if i ~= idx then put(out, dp.data[i])
+  dp.data := out
+  dp.n -:= 1
+  return dynamic_shrink(dp)
+end
+
+procedure dynamic_update(dp, coord, text, overwrite)
+  local f, idx, i
+  f := dynamic_find(dp, coord)
+  idx := f[1]
+  if \f[2] then {
+    if *text = 0 then {
+      if \overwrite then dynamic_remove_at(dp, idx)
+      return dp
+    }
+    dp.data[idx] := [coord, if \overwrite then text else dp.data[idx][2] || text]
+    return dp
+  }
+  if *text = 0 then return dp
+  dynamic_grow(dp)
+  dp.data := dp.data[1:idx] ||| [[coord, text]] ||| dp.data[idx:dp.n + 1]
+  dp.n +:= 1
+  return dp
+end
+
+procedure dynamic_insert(dp, coord, text)
+  return dynamic_update(dp, coord, text, &null)
+end
+
+procedure dynamic_replace(dp, coord, text)
+  return dynamic_update(dp, coord, text, 1)
+end
+
+procedure dynamic_remove(dp, coord)
+  local f
+  f := dynamic_find(dp, coord)
+  if \f[2] then dynamic_remove_at(dp, f[1])
+  return dp
+end
+
+## ------------------------------------------------------------------
+## BranchingMap: nested tables, one lookup per dimension, down to
+## leaves holding scroll text.
+record BranchingMap(depth, root, count)
+
+procedure branching_new(depth)
+  if depth < 1 then runerr(1, "depth must be >= 1")
+  return BranchingMap(depth, table(), 0)
+end
+
+procedure branching_fetch(bm, key)
+  local node, i, child
+  node := bm.root
+  every i := 1 to bm.depth do {
+    if /node[key[i]] then fail
+    child := node[key[i]]
+    if i = bm.depth then return child
+    node := child
+  }
+  fail
+end
+
+procedure branching_contains(bm, key)
+  return if branching_fetch(bm, key) then 1 else &null
+end
+
+## returns 1 when a new leaf was created
+procedure branching_put(bm, key, value)
+  local node, i, child, created
+  node := bm.root
+  every i := 1 to bm.depth - 1 do {
+    if /node[key[i]] then node[key[i]] := table()
+    node := node[key[i]]
+  }
+  created := if /node[key[bm.depth]] then 1 else &null
+  node[key[bm.depth]] := value
+  if \created then bm.count +:= 1
+  return created
+end
+
+procedure branching_remove(bm, key)
+  return branching_remove_rec(bm, bm.root, key, 1)
+end
+
+procedure branching_remove_rec(bm, node, key, level)
+  local child
+  if level = bm.depth then {
+    if /node[key[level]] then return &null
+    delete(node, key[level])
+    bm.count -:= 1
+    return 1
+  }
+  if /node[key[level]] then return &null
+  child := node[key[level]]
+  if branching_remove_rec(bm, child, key, level + 1) then {
+    if *child = 0 then delete(node, key[level])
+    return 1
+  }
+  return &null
+end
+
+procedure branching_items(bm)
+  local out, kt, pairs, pr
+  out := []
+  branching_items_rec(bm.root, [], bm.depth, out)
+  kt := table()
+  every e := !out do kt[e[1]] := e
+  pairs := sort(kt)
+  out := []
+  every pr := !pairs do put(out, pr[2])
+  return out
+end
+
+procedure branching_items_rec(node, prefix, level, out)
+  local ks, k, v
+  ks := []
+  every k := key(node) do put(ks, k)
+  ks := sort(ks)
+  every k := !ks do {
+    v := node[k]
+    if level = 1 then
+      put(out, [coord_key(prefix ||| [k]), prefix ||| [k], v])
+    else
+      branching_items_rec(v, prefix ||| [k], level - 1, out)
+  }
+  return
+end
+
+## ------------------------------------------------------------------
+## TransitivePhext: scroll store over a BranchingMap at depth 9.
+record TransitiveStore(map)
+
+procedure transitive_new(buffer)
+  local tp
+  tp := TransitiveStore(branching_new(9))
+  if *buffer > 0 then transitive_load(tp, buffer)
+  return tp
+end
+
+procedure transitive_load(tp, buffer)
+  local ps
+  tp.map := branching_new(9)
+  every ps := !phokenize(buffer) do branching_put(tp.map, ps[1], ps[2])
+  return tp
+end
+
+procedure transitive_depth(tp)
+  return tp.map.depth
+end
+
+procedure transitive_length(tp)
+  return tp.map.count
+end
+
+procedure transitive_scrolls(tp)
+  local out, e
+  out := []
+  every e := !branching_items(tp.map) do put(out, [e[2], e[3]])
+  return out
+end
+
+procedure transitive_serialize(tp)
+  return dephokenize(transitive_scrolls(tp))
+end
+
+procedure transitive_fetch(tp, coord)
+  return branching_fetch(tp.map, coord) | ""
+end
+
+procedure transitive_contains(tp, coord)
+  return branching_contains(tp.map, coord)
+end
+
+procedure transitive_update(tp, coord, text, overwrite)
+  local existing
+  if *text = 0 then {
+    if \overwrite then branching_remove(tp.map, coord)
+    return tp
+  }
+  if /overwrite then {
+    if existing := branching_fetch(tp.map, coord) then
+      text := existing || text
+  }
+  branching_put(tp.map, coord, text)
+  return tp
+end
+
+procedure transitive_insert(tp, coord, text)
+  return transitive_update(tp, coord, text, &null)
+end
+
+procedure transitive_replace(tp, coord, text)
+  return transitive_update(tp, coord, text, 1)
+end
+
+procedure transitive_append(tp, coord, text)
+  return transitive_insert(tp, coord, text)
+end
+
+procedure transitive_remove(tp, coord)
+  branching_remove(tp.map, coord)
+  return tp
+end

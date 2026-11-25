@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""Telephone-game adapter for libphext-scala — contract v2.
+
+This adapter subclasses the harness's shared adapter machinery
+(harness/adapter_base.py): PGP identity (key home harness/keys/ruby),
+the CYOA seek, echolocation, per-step validation and the total verify
+walk are the shared game machinery, identical for every participant.
+What this adapter plugs in is THIS port's own libphext, via the four
+hooks (explode / implode / insert / fetch) plus its own choose and
+elect rules.
+
+The port's toolchain runs on the ranch hub (aletheia-core), so each
+hook is one JSON line to the port's own CLI on the hub (serve mode,
+one persistent fleet-ssh process; state as base64). The hub CLI wraps
+only this port's libphext — never another port's implementation.
+"""
+import base64
+import gzip
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "harness"))
+from adapter_base import Adapter, coord_str, parse_coord  # noqa: E402
+
+IMPL = "scala"
+FLEET = os.path.expanduser(
+    "~/workspace/bickford-llama-ranch/deploy/fleet-ssh.sh")
+REMOTE_CLI = "/home/wbic16/telephone-scala/run-cli.sh"
+
+
+def b64(b):
+    return base64.b64encode(b).decode()
+
+
+class HubAdapter(Adapter):
+    IMPL = IMPL
+    _proc = None
+
+    # ---- wire to this port's own libphext on the hub ----
+    def _request(self, payload):
+        cls = type(self)
+        if cls._proc is None or cls._proc.poll() is not None:
+            cls._proc = subprocess.Popen(
+                [FLEET, "aletheia-core", REMOTE_CLI, "serve"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                text=True, bufsize=1)
+        # Wire compression: phext states are large and the tailnet
+        # channel is slow (~100-400 KB/s), so requests/responses over
+        # 64 KiB cross the wire gzip-wrapped as {"gz_b64": ...} (the
+        # hub CLI unwraps/wraps symmetrically). Without this, a
+        # game-scale init (2.2 MB state) cannot answer inside the
+        # driver's 30 s timeout; with it, it takes a few seconds.
+        wire = payload
+        raw = json.dumps(payload)
+        if len(raw) > 65536:
+            wire = {"gz_b64": base64.b64encode(
+                gzip.compress(raw.encode())).decode()}
+        cls._proc.stdin.write(json.dumps(wire) + "\n")
+        cls._proc.stdin.flush()
+        line = cls._proc.stdout.readline()
+        if not line:
+            raise RuntimeError("hub CLI closed the connection")
+        resp = json.loads(line)
+        if "gz_b64" in resp:
+            resp = json.loads(gzip.decompress(
+                base64.b64decode(resp["gz_b64"])))
+        return resp
+
+    # ---- the four libphext hooks ----
+    def explode(self, data: bytes):
+        resp = self._request({"cmd": "explode", "state": b64(data)})
+        m = resp.get("map") or {}
+        if isinstance(m, list):
+            m = {}
+        return {parse_coord(k): base64.b64decode(v) for k, v in m.items()}
+
+    def implode(self, mapping) -> bytes:
+        resp = self._request({"cmd": "implode", "map": {
+            coord_str(k): b64(v) for k, v in mapping.items()}})
+        return base64.b64decode(resp["state_b64"])
+
+    def insert(self, data: bytes, coord, text: bytes) -> bytes:
+        resp = self._request({"cmd": "insert", "state": b64(data),
+                              "coordinate": coord_str(coord),
+                              "text_b64": b64(text)})
+        if "error" in resp:
+            raise ValueError(resp["error"])
+        return base64.b64decode(resp["state_b64"])
+
+    def fetch(self, data: bytes, coord) -> bytes:
+        resp = self._request({"cmd": "fetch", "state": b64(data),
+                              "coordinate": coord_str(coord)})
+        return base64.b64decode(resp["text_b64"])
+
+    # ---- the draw (seek), overridden for SSH-wrapped ports ----
+    # adapter_base.seek explodes every candidate file through the
+    # hooks; over the SSH wire that is O(corpus) traffic per candidate
+    # (~70 files quote the title before the CYOA file in size order).
+    # This override performs the identical search by raw file I/O in
+    # the adapter process — same size-ordered walk, same containment
+    # filter, same acceptance rule (a scroll starting with the title
+    # whose second line reads "Coordinate: <its coordinate>") — with
+    # the break walk done in-process, and confirms the winning scroll
+    # through this port's own fetch hook (one wire round trip total).
+    _BREAK_DIM = {b: d for d, b in
+                  enumerate(b"\x01\x1f\x1e\x1d\x1c\x1a\x19\x18\x17")}
+    _BREAK_RE = re.compile(rb"[\x01\x1f\x1e\x1d\x1c\x1a\x19\x18\x17]")
+    _TITLE = b"The Test of Will"
+
+    def seek(self, root):
+        files = []
+        for dp, _dn, fn in os.walk(root):
+            for name in fn:
+                p = os.path.join(dp, name)
+                try:
+                    files.append((os.path.getsize(p), p))
+                except OSError:
+                    pass
+        files.sort()  # smallest first — the base seeker's strategy
+        for _size, path in files:
+            try:
+                data = open(path, "rb").read()
+            except OSError:
+                continue
+            if self._TITLE not in data:
+                continue
+            hit = self._walk_for_title(data)
+            if hit is None:
+                continue
+            off, coord, text, end = hit
+            # Confirm the scroll through this port's own libphext,
+            # sending only the prefix up to this scroll's end (the
+            # scroll is the last run of that prefix, so fetch sees it
+            # whole) — the full file would be needless wire traffic.
+            if self.fetch(data[:end], coord) != text:
+                continue
+            return {"impl": IMPL, "path": path, "offset": off,
+                    "coordinate": coord_str(coord),
+                    "title": text.split(b"\n", 1)[0].decode("utf-8",
+                                                            "replace")}
+        return {"impl": IMPL, "path": None}
+
+    def _walk_for_title(self, data):
+        coord = [1] * 9
+        run_start = 0
+        runs = []
+        for m in self._BREAK_RE.finditer(data):
+            runs.append((run_start, m.start(), tuple(coord)))
+            d = self._BREAK_DIM[m.group()[0]]
+            coord[d] += 1
+            for lower in range(d + 1, 9):
+                coord[lower] = 1
+            run_start = m.start() + 1
+        runs.append((run_start, len(data), tuple(coord)))
+        for start, end, coord_t in runs:
+            if end <= start:
+                continue
+            text = data[start:end]
+            if not text.startswith(self._TITLE):
+                continue
+            head = text.split(b"\n", 2)
+            if len(head) > 1 and head[1].strip() == \
+                    ("Coordinate: " + coord_str(coord_t)).encode():
+                return (start, coord_t, text, end)
+        return None
+
+    # ---- this port's own adventure (insert-only) ----
+    def choose(self, state, position, turn):
+        """scala's rule: start at the tracked position; while the
+        candidate coordinate already holds a scroll, advance it by one
+        scroll break. Place "scala was here, turn N" at the first
+        unused coordinate."""
+        m = self.explode(state)
+        pos = list(parse_coord(position))
+        while tuple(pos) in m:
+            pos[8] += 1
+        return {"op": "insert", "coordinate": coord_str(pos),
+                "text": "scala was here, turn %d" % turn}
+
+    # ---- this port's own popcorn election ----
+    def elect(self, position, candidates, turn, placements):
+        """scala's rule: sha256("scala-elect:<position>:<turn>:
+        <candidates>") picks from the candidates other than itself
+        (when there are any)."""
+        pool = [c for c in candidates if c != IMPL] or list(candidates)
+        seed = hashlib.sha256(
+            ("scala-elect:%s:%s:%s" %
+             (position, turn, ",".join(candidates))).encode()).hexdigest()
+        return pool[int(seed[:8], 16) % len(pool)]
+
+
+if __name__ == "__main__":
+    HubAdapter().main()

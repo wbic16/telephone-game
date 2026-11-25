@@ -1,0 +1,7 @@
+{
+ "id": "tcl",
+ "adapter": "ports/tcl/adapter",
+ "status": "playing",
+ "kind": "port",
+ "note": "libphext Tcl port, 0.6.1 parity; tested on aletheia-core (tclsh 8.6.14 system); fixtures 16/16 input.phext byte-identical round-trips, normalize idempotent; adapter contract v2 self-test PASS (keygen/seek/elect/insert-only choose+apply/attest/validate/verify); smoke-001 verify PASS / 30 placements; serve-mode init PASS"
+}

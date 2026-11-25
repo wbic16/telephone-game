@@ -421,6 +421,35 @@ proc handle {line} {
     }
 }
 
+# Game-scale framing (2026-11-24): lines over 8 KB may arrive
+# gzip-framed as "GZ1:" + base64(gzip(line)) -- the fleet-ssh channel
+# is ~25-70 KB/s and raw base64 state lines took minutes at 1,000
+# placements. tclsh framing shells to the system base64(1)/gzip(1)
+# on temp files (mirrors the lua/fortran ports). Lossless; plain
+# lines unchanged.
+proc gz_unframe {b64} {
+    set fb [tmpfile_with $b64]
+    set fo "$fb.out"
+    exec -ignorestderr sh -c "base64 -d '$fb' | gzip -dc > '$fo'"
+    set f [open $fo r]
+    fconfigure $f -encoding binary -translation binary
+    set data [read $f]
+    close $f
+    file delete $fb $fo
+    return $data
+}
+proc gz_frame {data} {
+    set fi [tmpfile_with $data]
+    set fb "$fi.b64"
+    exec -ignorestderr sh -c "gzip -c '$fi' | base64 -w0 > '$fb'"
+    set f [open $fb r]
+    fconfigure $f -encoding binary -translation binary
+    set b64 [read $f]
+    close $f
+    file delete $fi $fb
+    return "GZ1:[string trim $b64]"
+}
+
 proc emit {v} {
     puts stdout [json::canon $v]
     flush stdout
@@ -429,11 +458,17 @@ proc emit {v} {
 if {[lindex $argv 0] eq "serve"} {
     while {[gets stdin line] >= 0} {
         if {[string trim $line] eq ""} { continue }
-        if {[catch {handle $line} resp]} {
-            emit [json::jobj [list error [json::jstr $resp]]]
-        } else {
-            emit $resp
+        if {[string range $line 0 3] eq "GZ1:"} {
+            set line [gz_unframe [string range $line 4 end]]
         }
+        if {[catch {handle $line} resp]} {
+            set out [json::canon [json::jobj [list error [json::jstr $resp]]]]
+        } else {
+            set out [json::canon $resp]
+        }
+        if {[string length $out] > 8192} { set out [gz_frame $out] }
+        puts stdout $out
+        flush stdout
     }
 } else {
     set line [read stdin]

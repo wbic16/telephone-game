@@ -1,0 +1,7 @@
+{
+ "adapter": "ports/groovy/adapter",
+ "id": "groovy",
+ "kind": "port",
+ "note": "libphext-groovy (Apache Groovy 4.0.24 binary zip from archive.apache.org \u2014 dlcdn had rotated it off \u2014 user-level in ~/telephone-groovy on aletheia-core, on the hub's OpenJDK 21; JDK stdlib only \u2014 hand-written JSON, java.util.Base64/MessageDigest, java.util.zip gzip). Suite green (82 checks, fixtures 16/16 byte-identical + 16/16 normalize-idempotent); remove is coordinate-preserving (gap, no renumbering) per libphext-py. v2 adapter self-test PASS; serve init (deferred cache) + driver-form validate pass; verify vs games/smoke-001/stress.phext PASS/30 verbatim {\"first_failure\": null, \"impl\": \"groovy\", \"placements_checked\": 30, \"verdict\": \"pass\"}. Game-scale (snapshot copy of games/test-001/stress.phext, 2.2 MB/1,000 placements): serve init pass in 0.16 s (driver timeout 30 s); serve validate (post-turn snapshot method) pass in 6.69 s (driver timeout 60 s). Wire framing GZ1 over 8 KB in adapter + hub CLI.",
+ "status": "playing"
+}

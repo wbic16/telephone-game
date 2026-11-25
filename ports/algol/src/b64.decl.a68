@@ -1,0 +1,251 @@
+# Base64 + ASCII text-file helpers for libphext-algol. #
+# Declaration fragment (see phext.decl.a68 header). #
+
+# Why base64 is hand-written here: Algol 68 Genie's text transput #
+# is not byte-safe for file I/O (probed 2026-11-24: text get UTF-8 #
+# decodes -- byte 255 reads back as 0 -- and channels report #
+# bin possible = FALSE for disk files). So in this port every file #
+# carries ASCII only (JSON, base64, PGP armor, hex), raw bytes are #
+# produced/consumed by the standard CLI tools (base64, sha256sum, #
+# gzip, gpg) where the language lacks them, and base64 itself is #
+# coded in Algol below. #
+
+STRING b64alpha :=
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+[0:255]INT b64rev;
+INT b64rev init := 0;
+
+PROC b64 init = VOID:
+BEGIN
+  IF b64rev init = 0 THEN
+    b64rev init := 1;
+    FOR i FROM 0 TO 255 DO b64rev[i] := -1 OD;
+    FOR i FROM 1 TO 64 DO b64rev[ABS b64alpha[i]] := i - 1 OD;
+    b64rev[ABS "="] := -2
+  FI
+END;
+
+PROC b64 enc = (STRING data) STRING:
+BEGIN
+  b64 init;
+  INT n := UPB data;
+  INT outn := idiv (n + 2, 3) * 4;
+  STRING out := "";
+  IF outn > 0 THEN
+    out := rep char (32, outn);
+    INT o := 1;
+    INT i := 1;
+    WHILE i <= n DO
+      INT b0 := ABS data[i];
+      INT b1 := IF i + 1 <= n THEN ABS data[i + 1] ELSE 0 FI;
+      INT b2 := IF i + 2 <= n THEN ABS data[i + 2] ELSE 0 FI;
+      out[o] := b64alpha[idiv (b0, 4) + 1];
+      out[o + 1] := b64alpha[(b0 MOD 4) * 16 + idiv (b1, 16) + 1];
+      out[o + 2] := IF i + 1 <= n
+                    THEN b64alpha[(b1 MOD 16) * 4 + idiv (b2, 64) + 1]
+                    ELSE "=" FI;
+      out[o + 3] := IF i + 2 <= n
+                    THEN b64alpha[(b2 MOD 64) + 1]
+                    ELSE "=" FI;
+      o +:= 4;
+      i +:= 3
+    OD
+  FI;
+  out
+END;
+
+PROC b64 dec = (STRING text) STRING:
+BEGIN
+  b64 init;
+  INT cap := idiv (UPB text * 3, 4) + 3;
+  STRING out := rep char (32, cap);
+  INT o := 0;
+  INT acc := 0, nbits := 0;
+  FOR i FROM 1 TO UPB text DO
+    INT v := b64rev[ABS text[i]];
+    IF v >= 0 THEN
+      acc := acc * 64 + v;
+      nbits +:= 6;
+      IF nbits >= 8 THEN
+        nbits -:= 8;
+        o +:= 1;
+        out[o] := REPR (idiv (acc, 2 ** nbits) MOD 256);
+        acc := acc MOD (2 ** nbits)
+      FI
+    ELIF v = -2 THEN
+      nbits := 0;
+      acc := 0
+    FI
+  OD;
+  IF o = 0 THEN "" ELSE out[1:o] FI
+END;
+
+# ---- ASCII text files (the only files this port ever touches) ---- #
+INT tmpcounter := 0;
+
+PROC tmp name = (STRING tag) STRING:
+BEGIN
+  tmpcounter +:= 1;
+  "/tmp/tel-algol-" + tag + "-" + whole (tmpcounter, 0)
+END;
+
+# writer: content goes out in <=4096-char lines (a68g line #
+# transput is unreliable on very long lines); every consumer of #
+# these files (base64 -d, the line reader) tolerates the #
+# inserted newlines. #
+PROC write text file = (STRING path, STRING data) VOID:
+BEGIN
+  FILE f;
+  establish (f, path, stand out channel);
+  INT n := UPB data, i := 1;
+  WHILE i <= n DO
+    INT j := i + 4095;
+    IF j > n THEN j := n FI;
+    put (f, (data[i:j], newline));
+    i := j + 1
+  OD;
+  IF n = 0 THEN put (f, (newline)) FI;
+  close (f)
+END;
+
+# read a text file line by line, rejoining with newline; a final #
+# unterminated line is kept (without a trailing newline) #
+# size of a file via stat(1); the size file (digits + newline) is #
+# read with a single INT get, which never hits end-of-file on a #
+# successful stat. Only called on files this port created. #
+PROC file size = (STRING path) INT:
+BEGIN
+  STRING sf := tmp name ("sz");
+  INT rc := system ("stat -c %s " + path + " > " + sf + " 2>/dev/null");
+  INT n := 0;
+  FILE f;
+  IF open (f, sf, stand in channel) = 0 THEN
+    get (f, (n, newline));
+    close (f)
+  FI;
+  system ("rm -f " + sf);
+  n
+END;
+
+# line reader: works on newline-terminated files (every producer #
+# in this port guarantees that); lines are rejoined with newline #
+# and accumulated in chunks so multi-MB base64 payloads stay #
+# near-linear. Empty files read as "". #
+PROC read text file = (STRING path) STRING:
+BEGIN
+  STRING out := "";
+  IF file size (path) > 0 THEN
+    FILE f;
+    INT rc := open (f, path, stand in channel);
+    IF rc = 0 THEN
+      BOOL eof := FALSE;
+      on file end (f, (REF FILE dummy) BOOL: (eof := TRUE; TRUE));
+      # Lines are gathered in fixed 4096-line chunks; each chunk #
+      # is joined pairwise (a68g STRING += copies the whole #
+      # string, so per-line appends would be quadratic) and the #
+      # chunks are appended to the result, which keeps the total #
+      # copying near-linear. Lines are rejoined with newline. #
+      [1:4096]STRING lines;
+      INT cnt := 0;
+      BOOL first chunk := TRUE;
+      WHILE NOT eof DO
+        STRING line := "";
+        get (f, (line, newline));
+        IF NOT eof THEN
+          cnt +:= 1;
+          lines[cnt] := line;
+          IF cnt = 4096 THEN
+            STRING joined := join lines (lines, cnt);
+            IF first chunk THEN
+              out := joined;
+              first chunk := FALSE
+            ELSE
+              out +:= REPR (10) + joined
+            FI;
+            cnt := 0
+          FI
+        FI
+      OD;
+      close (f);
+      IF cnt > 0 THEN
+        STRING joined := join lines (lines, cnt);
+        IF first chunk THEN
+          out := joined
+        ELSE
+          out +:= REPR (10) + joined
+        FI
+      FI
+    FI
+  FI;
+  out
+END;
+
+# pairwise join of the first cnt entries of a line row, with #
+# newline separators (no trailing newline) #
+PROC join lines = (REF []STRING lines, INT cnt) STRING:
+BEGIN
+  STRING r := "";
+  IF cnt > 0 THEN
+    INT width := 1;
+    WHILE width < cnt DO
+      INT i := 1;
+      WHILE i <= cnt DO
+        IF i + width <= cnt THEN
+          lines[i] := lines[i] + REPR (10) + lines[i + width];
+          lines[i + width] := ""
+        ELIF width > 1 THEN
+          lines[i] := lines[i] + REPR (10)
+        FI;
+        i +:= 2 * width
+      OD;
+      width *:= 2
+    OD;
+    r := lines[1]
+  FI;
+  r
+END;
+
+PROC file exists = (STRING path) BOOL:
+BEGIN
+  FILE f;
+  INT rc := open (f, path, stand in channel);
+  BOOL ok := rc = 0;
+  IF ok THEN close (f) FI;
+  ok
+END;
+
+# sha256 hex of raw bytes, via the standard CLI tools: the bytes #
+# cross to sha256sum as a base64 text file decoded by base64(1) #
+PROC sha256 hex = (STRING data) STRING:
+BEGIN
+  STRING fb := tmp name ("sha");
+  write text file (fb, b64 enc (data));
+  INT rc := system ("base64 -d < " + fb + " > " + fb + ".raw" +
+                    " && sha256sum " + fb + ".raw > " + fb + ".out");
+  STRING out := read text file (fb + ".out");
+  system ("rm -f " + fb + " " + fb + ".raw " + fb + ".out");
+  IF UPB out >= 64 THEN out[1:64] ELSE "" FI
+END;
+
+PROC gzip bytes = (STRING data) STRING:
+BEGIN
+  STRING fb := tmp name ("gz");
+  write text file (fb, b64 enc (data));
+  INT rc := system ("base64 -d < " + fb + " | gzip -c | base64 > " +
+                    fb + ".out");
+  STRING out := read text file (fb + ".out");
+  system ("rm -f " + fb + " " + fb + ".out");
+  b64 dec (out)
+END;
+
+PROC gunzip bytes = (STRING data) STRING:
+BEGIN
+  STRING fb := tmp name ("gz");
+  write text file (fb, b64 enc (data));
+  INT rc := system ("base64 -d < " + fb + " | gzip -dc 2>/dev/null" +
+                    " | base64 > " + fb + ".out");
+  STRING out := read text file (fb + ".out");
+  system ("rm -f " + fb + " " + fb + ".out");
+  b64 dec (out)
+END;

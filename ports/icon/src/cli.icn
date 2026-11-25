@@ -1,0 +1,715 @@
+## Hub-side CLI for libphext-icon (Exocortical Telephone Game,
+## contract v2). Transport: argument `serve` = one JSON request per
+## line on stdin, one response per line on stdout; no argument = ONE
+## JSON object on stdin, ONE response. State crosses the wire as
+## base64 under "state". Serve lines over 8 KB travel GZ1-framed:
+## "GZ1:" + base64(gzip(line)). Wraps only this port's own libphext
+## (src/phext.icn). JSON is hand-written here (canonical form must
+## match Python json.dumps); SHA-256/base64/gzip go through the
+## standard CLI tools (sha256sum, base64, gzip) where Icon lacks
+## them; PGP goes through subprocess gpg with per-port GNUPGHOME
+## (~/telephone-icon/gnupg unless TELEPHONE_GNUPGHOME).
+##
+## All wire text is handled as byte strings (Icon chars are bytes),
+## so scroll bytes are never reinterpreted.
+$include "phext.icn"
+
+record JObj(pairs)      ## pairs: list of [key, value]
+record JArr(items)
+record JBool(v)
+record JNull()
+
+global IMPL, INDEX_COORD, KEYS_COORD, KH_COORD, EVPREFIX
+global CACHE, TMPCOUNTER, JNULL1
+
+## ---------------- temp files / shell ----------------
+procedure tmpfile(tag)
+  TMPCOUNTER +:= 1
+  return "/tmp/tel-icon-" || tag || "-" || &time || "-" ||
+         &random || "-" || TMPCOUNTER
+end
+
+procedure write_file(path, data)
+  local f
+  f := open(path, "wu") | runerr(1, "cannot write " || path)
+  writes(f, data)
+  close(f)
+  return
+end
+
+procedure read_file(path)
+  local f, data, chunk
+  f := open(path, "u") | return ""
+  data := ""
+  while chunk := reads(f, 65536) do data ||:= chunk
+  close(f)
+  return data
+end
+
+procedure shell(cmd)
+  return system(cmd)
+end
+
+procedure sha256hex(data)
+  local f, out
+  f := tmpfile("sha")
+  write_file(f, data)
+  shell("sha256sum " || f || " > " || f || ".out 2>/dev/null")
+  out := read_file(f || ".out")
+  shell("rm -f " || f || " " || f || ".out")
+  return out[1:65]
+end
+
+procedure b64enc(data)
+  local f, out
+  f := tmpfile("b64")
+  write_file(f, data)
+  shell("base64 -w0 < " || f || " > " || f || ".out")
+  out := read_file(f || ".out")
+  shell("rm -f " || f || " " || f || ".out")
+  return trim(out, '\n')
+end
+
+procedure b64dec(s)
+  local f, out
+  f := tmpfile("b64")
+  write_file(f, s)
+  shell("base64 -d < " || f || " > " || f || ".out 2>/dev/null")
+  out := read_file(f || ".out")
+  shell("rm -f " || f || " " || f || ".out")
+  return out
+end
+
+procedure gzip_bytes(data)
+  local f, out
+  f := tmpfile("gz")
+  write_file(f, data)
+  shell("gzip -c " || f || " > " || f || ".out")
+  out := read_file(f || ".out")
+  shell("rm -f " || f || " " || f || ".out")
+  return out
+end
+
+procedure gunzip_bytes(data)
+  local f, out
+  f := tmpfile("gz")
+  write_file(f, data)
+  shell("gzip -dc " || f || " > " || f || ".out 2>/dev/null")
+  out := read_file(f || ".out")
+  shell("rm -f " || f || " " || f || ".out")
+  return out
+end
+
+## ---------------- JSON ----------------
+record JP(s, i, n)
+
+procedure jp_skip(p)
+  while p.i <= p.n & any(' \t\n\r', p.s[p.i]) do p.i +:= 1
+  return
+end
+
+procedure jp_expect(p, ch)
+  if p.s[p.i] == ch then { p.i +:= 1; return }
+  runerr(1, "json: expected " || ch)
+end
+
+procedure json_parse(text)
+  local p, v
+  p := JP(text, 1, *text)
+  v := jp_value(p)
+  jp_skip(p)
+  return v
+end
+
+procedure jp_value(p)
+  local ch
+  jp_skip(p)
+  ch := p.s[p.i]
+  case ch of {
+    "{": return jp_obj(p)
+    "[": return jp_arr(p)
+    "\"": return jp_str(p)
+    "t": { jp_lit(p, "true"); return JBool(1) }
+    "f": { jp_lit(p, "false"); return JBool(&null) }
+    "n": { jp_lit(p, "null"); return JNULL1 }
+    default: return jp_num(p)
+  }
+end
+
+procedure jp_lit(p, lit)
+  if p.s[p.i:p.i + *lit] == lit then { p.i +:= *lit; return }
+  runerr(1, "json: bad literal")
+end
+
+procedure jp_obj(p)
+  local pairs, k, v
+  jp_expect(p, "{")
+  pairs := []
+  jp_skip(p)
+  if p.s[p.i] == "}" then { p.i +:= 1; return JObj(pairs) }
+  while 1 do {
+    jp_skip(p)
+    k := jp_str(p)
+    jp_skip(p)
+    jp_expect(p, ":")
+    v := jp_value(p)
+    put(pairs, [k, v])
+    jp_skip(p)
+    if p.s[p.i] == "}" then { p.i +:= 1; break }
+    jp_expect(p, ",")
+  }
+  return JObj(pairs)
+end
+
+procedure jp_arr(p)
+  local items, v
+  jp_expect(p, "[")
+  items := []
+  jp_skip(p)
+  if p.s[p.i] == "]" then { p.i +:= 1; return JArr(items) }
+  while 1 do {
+    v := jp_value(p)
+    put(items, v)
+    jp_skip(p)
+    if p.s[p.i] == "]" then { p.i +:= 1; break }
+    jp_expect(p, ",")
+  }
+  return JArr(items)
+end
+
+procedure hexval(ch)
+  return find(ch, "0123456789abcdef") | (find(ch, "ABCDEF") + 9 + 1)
+end
+
+procedure jp_str(p)
+  local out, ch, e, cp, lo
+  jp_expect(p, "\"")
+  out := ""
+  while 1 do {
+    ch := p.s[p.i]
+    p.i +:= 1
+    case ch of {
+      "\"": break
+      "\\": {
+        e := p.s[p.i]
+        p.i +:= 1
+        case e of {
+          "n": out ||:= "\n"
+          "r": out ||:= "\r"
+          "t": out ||:= "\t"
+          "b": out ||:= "\b"
+          "f": out ||:= "\f"
+          "u": {
+            cp := jp_hex4(p)
+            if cp >= 16rD800 & cp <= 16rDBFF &
+               p.s[p.i] == "\\" & p.s[p.i + 1] == "u" then {
+              p.i +:= 2
+              lo := jp_hex4(p)
+              if lo >= 16rDC00 & lo <= 16rDFFF then
+                cp := 16r10000 + (cp - 16rD800) * 1024 + (lo - 16rDC00)
+              else
+                cp := 16rFFFD
+            }
+            out ||:= utf8_encode(cp)
+          }
+          default: out ||:= e
+        }
+      }
+      default: out ||:= ch
+    }
+  }
+  return out
+end
+
+procedure jp_hex4(p)
+  local v, j
+  v := 0
+  every j := 0 to 3 do
+    v := v * 16 + (hexval(p.s[p.i + j]) - 1)
+  p.i +:= 4
+  return v
+end
+
+## codepoints <= 0xFF become the single byte char(cp) (the wire
+## domain is latin-1, matching adapter_base's latin-1 text codec);
+## larger codepoints are UTF-8 encoded.
+procedure utf8_encode(cp)
+  if cp <= 16rFF then return char(cp)
+  if cp <= 16r7FF then
+    return char(16rC0 + cp / 64) || char(16r80 + cp % 64)
+  if cp <= 16rFFFF then
+    return char(16rE0 + cp / 4096) ||
+           char(16r80 + (cp / 64) % 64) || char(16r80 + cp % 64)
+  return char(16rF0 + cp / 262144) ||
+         char(16r80 + (cp / 4096) % 64) ||
+         char(16r80 + (cp / 64) % 64) || char(16r80 + cp % 64)
+end
+
+procedure jp_num(p)
+  local start, tok
+  start := p.i
+  while p.i <= p.n & any('-+0123456789.eE', p.s[p.i]) do p.i +:= 1
+  tok := p.s[start:p.i]
+  if find(".", tok) | find("e", tok) | find("E", tok) then
+    return real(tok)
+  return integer(tok)
+end
+
+procedure hex4(n)
+  local h
+  h := ""
+  every 1 to 4 do {
+    h := "0123456789abcdef"[n % 16 + 1] || h
+    n := n / 16
+  }
+  return h
+end
+
+procedure json_escape(s)
+  local out, i, cp, v
+  out := "\""
+  every i := 1 to *s do {
+    cp := ord(s[i])
+    case s[i] of {
+      "\"": out ||:= "\\\""
+      "\\": out ||:= "\\\\"
+      "\n": out ||:= "\\n"
+      "\r": out ||:= "\\r"
+      "\t": out ||:= "\\t"
+      "\b": out ||:= "\\b"
+      "\f": out ||:= "\\f"
+      default: {
+        if cp < 16r20 | cp > 16r7E then {
+          if cp > 16rFFFF then {
+            v := cp - 16r10000
+            out ||:= "\\u" || hex4(16rD800 + v / 1024) ||
+                     "\\u" || hex4(16rDC00 + v % 1024)
+          } else
+            out ||:= "\\u" || hex4(cp)
+        } else
+          out ||:= s[i]
+      }
+    }
+  }
+  return out || "\""
+end
+
+procedure json_write(v)
+  local keys, kt, pairs, pr, out, items, e
+  case type(v) of {
+    "JObj": {
+      kt := table()
+      every e := !v.pairs do kt[e[1]] := e[2]
+      keys := sort(kt)
+      out := "{"
+      every pr := !keys do
+        out ||:= json_escape(pr[1]) || ":" || json_write(pr[2]) || ","
+      if *keys > 0 then out := out[1:*out]
+      return out || "}"
+    }
+    "JArr": {
+      out := "["
+      every e := !v.items do out ||:= json_write(e) || ","
+      if *v.items > 0 then out := out[1:*out]
+      return out || "]"
+    }
+    "JBool": return if \v.v then "true" else "false"
+    "JNull": return "null"
+    "string": return json_escape(v)
+    "integer": return string(v)
+    "real": return string(v)
+    default: runerr(1, "json-write: bad term")
+  }
+end
+
+procedure canon(v)
+  return json_write(v)
+end
+
+procedure jget(obj, key)
+  local e
+  every e := !obj.pairs do
+    if e[1] == key then return e[2]
+  fail
+end
+
+procedure jget_or(obj, key, dflt)
+  local e
+  every e := !obj.pairs do
+    if e[1] == key then return e[2]
+  return dflt
+end
+
+procedure jobj(pairs)
+  return JObj(pairs)
+end
+
+## ---------------- gpg ----------------
+procedure gnupg_home()
+  local home
+  home := getenv("TELEPHONE_GNUPGHOME") |
+          (getenv("HOME") || "/telephone-" || IMPL || "/gnupg")
+  shell("mkdir -p " || home)
+  shell("chmod 700 " || home)
+  return home
+end
+
+procedure run_gpg(home, args, input)
+  local fi, fo, fe, cmd, a, out
+  fi := tmpfile("gpgin")
+  fo := tmpfile("gpgout")
+  fe := tmpfile("gpgerr")
+  write_file(fi, input)
+  cmd := "GNUPGHOME=" || home || " gpg --batch --yes"
+  every a := !args do cmd ||:= " '" || a || "'"
+  cmd ||:= " < " || fi || " > " || fo || " 2> " || fe
+  if shell(cmd) ~= 0 then {
+    out := read_file(fe)
+    shell("rm -f " || fi || " " || fo || " " || fe)
+    runerr(1, "gpg failed: " || out)
+  }
+  out := read_file(fo)
+  shell("rm -f " || fi || " " || fo || " " || fe)
+  return out
+end
+
+procedure do_keygen()
+  local home, uid, keys, pub
+  home := gnupg_home()
+  uid := "telephone-" || IMPL
+  keys := run_gpg(home, ["--list-keys", "--with-colons"], "") | ""
+  if not find("pub", keys) then
+    run_gpg(home, ["--pinentry-mode", "loopback", "--passphrase", "",
+                   "--quick-generate-key", uid, "ed25519", "sign",
+                   "never"], "")
+  pub := run_gpg(home, ["--armor", "--export", uid], "")
+  return jobj([["impl", IMPL], ["pubkey", pub]])
+end
+
+procedure do_attest(descriptor)
+  local home, uid, sig
+  home := gnupg_home()
+  uid := "telephone-" || IMPL
+  sig := run_gpg(home, ["--pinentry-mode", "loopback", "--passphrase",
+                        "", "--detach-sign", "--armor", "-u", uid],
+                 canon(descriptor))
+  ## the local adapter translates armored -> base64-of-armored
+  return jobj([["signature", sig]])
+end
+
+procedure verify_signature(pubkeys_text, data, sig_b64)
+  local dir, home, sigf, dataf, keysf, ok
+  dir := tmpfile("verify")
+  home := dir || "/gnupg"
+  sigf := dir || "/sig.asc"
+  dataf := dir || "/data"
+  keysf := dir || "/keys"
+  shell("mkdir -p " || home)
+  shell("chmod 700 " || home)
+  write_file(sigf, b64dec(sig_b64))
+  write_file(dataf, data)
+  write_file(keysf, pubkeys_text)
+  ok := &null
+  if shell("GNUPGHOME=" || home || " gpg --batch --yes --import < " ||
+           keysf || " 2>/dev/null") = 0 &
+     shell("GNUPGHOME=" || home || " gpg --batch --yes --verify " ||
+           sigf || " " || dataf || " 2>/dev/null") = 0 then
+    ok := 1
+  shell("rm -rf " || dir)
+  return ok
+end
+
+## ---------------- game ----------------
+procedure state_of(req)
+  local s
+  s := jget_or(req, "state", &null)
+  if /s then s := jget(req, "state_b64")
+  return b64dec(s)
+end
+
+procedure table_ref(tbl, coord)
+  local hit
+  hit := tbl[coord_string(coord)]
+  return if \hit then hit[2] else &null
+end
+
+procedure do_echo(ping)
+  return jobj([["impl", IMPL],
+               ["echo", sha256hex(canon(jobj([["impl", IMPL],
+                                               ["ping", ping]])))]])
+end
+
+procedure do_elect(position, candidates, turn)
+  local names, pool, nm, seed, idx
+  names := candidates.items
+  pool := []
+  every nm := !names do
+    if nm ~== IMPL then put(pool, nm)
+  if *pool = 0 then pool := names
+  seed := sha256hex(IMPL || "-elect:" || position || ":" || turn ||
+                    ":" || concat_names(names))
+  idx := integer("16r" || seed[1:9]) % *pool + 1
+  return jobj([["elect", pool[idx]]])
+end
+
+procedure concat_names(names)
+  local out, nm
+  out := ""
+  every nm := !names do out ||:= nm || ","
+  if *out > 0 then out := out[1:*out]
+  return out
+end
+
+procedure do_choose(data, position, turn)
+  local m, pos
+  m := phext_explode(data)
+  pos := coord_parse(position)
+  while \m[coord_string(pos)] do
+    pos := pos[1:9] ||| [pos[9] + 1]
+  return jobj([["op", "insert"],
+               ["coordinate", coord_string(pos)],
+               ["text", IMPL || " was here, turn " || turn]])
+end
+
+procedure do_apply(data, step)
+  local coord, m, result
+  coord := coord_parse(jget(step, "coordinate"))
+  m := phext_explode(data)
+  if \m[coord_string(coord)] then
+    runerr(1, "coordinate already occupied")
+  m[coord_string(coord)] := [coord, jget(step, "text")]
+  result := phext_implode(m)
+  return jobj([["state_b64", b64enc(result)],
+               ["state_sha256", sha256hex(result)]])
+end
+
+procedure do_init(data)
+  CACHE := phext_explode(data)
+  return jobj([["impl", IMPL], ["verdict", "pass"]])
+end
+
+procedure vfail(detail)
+  return jobj([["impl", IMPL], ["verdict", "fail"],
+               ["detail", detail]])
+end
+
+procedure do_validate(data, step, event_coord_s, index_line)
+  local new_map, coord, ev, old, placed, k, hit, nv, idx
+  new_map := phext_explode(data)
+  coord := coord_parse(jget(step, "coordinate"))
+  ev := coord_parse(event_coord_s)
+  old := CACHE
+  placed := table_ref(new_map, coord)
+  if /placed | placed ~== jget(step, "text") then
+    return vfail("placed scroll missing or altered")
+  every k := key(old) do {
+    if coord_string(old[k][1]) ~== coord_string(INDEX_COORD) then {
+      nv := table_ref(new_map, old[k][1])
+      if /nv | nv ~== old[k][2] then
+        return vfail("prior scroll overwritten at " ||
+                     coord_string(old[k][1]))
+    }
+  }
+  every k := key(new_map) do {
+    if /old[k] & coord_compare(new_map[k][1], coord) ~= 0 &
+       coord_compare(new_map[k][1], ev) ~= 0 then
+      return vfail("unexpected new scroll at " ||
+                   coord_string(new_map[k][1]))
+  }
+  idx := table_ref(new_map, INDEX_COORD) | ""
+  if not suffix(trim(index_line, '\n'), trim(idx, '\n')) then
+    return vfail("index does not record the placement")
+  CACHE := new_map
+  return jobj([["impl", IMPL], ["verdict", "pass"]])
+end
+
+procedure suffix(small, big)
+  ## 1 when big ends with small
+  if *small > *big then fail
+  return if big[-*small:0] == small | (*small = 0) then 1 else &null
+end
+
+procedure vfail_n(n, msg)
+  return jobj([["impl", IMPL], ["verdict", "fail"],
+               ["placements_checked", n],
+               ["first_failure", jobj([["detail", msg]])]])
+end
+
+procedure do_verify(data)
+  local m, keys_text, kh
+  m := phext_explode(data)
+  keys_text := table_ref(m, KEYS_COORD) | ""
+  kh := trim(table_ref(m, KH_COORD) | "")
+  if sha256hex(keys_text) ~== kh then
+    return vfail_n(0, "keys-hash scroll does not match keys")
+  return verify_events(m, keys_text)
+end
+
+procedure verify_events(m, keys_text)
+  local events, k, c, seqs, expect, prev, placements, ev, body, res
+  events := table()
+  every k := key(m) do {
+    c := m[k][1]
+    if coord_compare(c[1:9], EVPREFIX) = 0 then
+      events[c[9]] := json_parse(m[k][2])
+  }
+  seqs := []
+  every k := key(events) do put(seqs, k)
+  seqs := sort(seqs)
+  expect := 1
+  prev := JNULL1
+  placements := table()
+  every s := !seqs do {
+    if s ~= expect then
+      return vfail_n(*placements,
+                     "event seq gap at " || s)
+    ev := events[s]
+    if not jequal(jget_or(ev, "prev", JNULL1), prev) then
+      return vfail_n(*placements,
+                     "event chain broken at seq " || s)
+    body := jget(ev, "body")
+    prev := sha256hex(canon(body))
+    if jget_or(body, "type", JNULL1) == "placement" then {
+      res := check_placement(body, m, keys_text, placements, s)
+      if type(res) == "string" then
+        return vfail_n(*placements, res)
+    }
+    expect +:= 1
+  }
+  return verify_index(m, placements)
+end
+
+procedure jequal(a, b)
+  ## structural equality for prev-hash values (null or string)
+  if type(a) == "JNull" & type(b) == "JNull" then return 1
+  if type(a) == "string" & type(b) == "string" & a == b then return 1
+  fail
+end
+
+procedure prev_repr(prev)
+  return if type(prev) == "JNull" then "null" else prev
+end
+
+procedure check_placement(body, m, keys_text, placements, s)
+  local coord, t, desc
+  coord := coord_parse(jget(body, "coord"))
+  if \placements[coord_string(coord)] then
+    return "coordinate reused at seq " || s
+  t := table_ref(m, coord)
+  if /t | sha256hex(t) ~== jget(body, "text_sha256") then
+    return "placement scroll hash mismatch seq " || s
+  desc := jobj([["turn", jget(body, "turn")],
+                ["coordinate", jget(body, "coord")],
+                ["scroll_sha256", jget(body, "text_sha256")],
+                ["file_sha256", jget(body, "file_sha256")]])
+  if verify_signature(keys_text, canon(desc), jget(body, "att")) then {
+    placements[coord_string(coord)] := body
+    return 1
+  }
+  return "attestation fails at seq " || s
+end
+
+procedure verify_index(m, placements)
+  local n, idx_text, lines, ln, parts, body
+  n := *placements
+  idx_text := table_ref(m, INDEX_COORD) | ""
+  lines := []
+  every ln := !str_split(idx_text, '\n') do
+    if *ln > 0 & ln[1] ~== "#" then put(lines, ln)
+  if *lines ~= n then
+    return vfail_n(n, "index lines != placements")
+  every ln := !lines do {
+    parts := str_split(ln, ' ')
+    if *parts < 4 then parts := parts ||| ["", "", "", ""]
+    body := placements[parts[2]]
+    if /body | jget(body, "text_sha256") ~== parts[3] then
+      return vfail_n(n, "index hash mismatch: " ||
+                     ln[1:minimum(41, *ln + 1)])
+  }
+  return jobj([["impl", IMPL], ["verdict", "pass"],
+               ["placements_checked", n],
+               ["first_failure", JNULL1]])
+end
+
+## ---------------- dispatch ----------------
+procedure dispatch(req)
+  local cmd
+  cmd := jget(req, "cmd")
+  case cmd of {
+    "id": return jobj([["impl", IMPL]])
+    "keygen": return do_keygen()
+    "echo": return do_echo(jget(req, "ping"))
+    "elect": return do_elect(jget(req, "position"),
+                             jget(req, "candidates"),
+                             jget(req, "turn"))
+    "choose": return do_choose(state_of(req), jget(req, "position"),
+                               jget(req, "turn"))
+    "apply": return do_apply(state_of(req), jget(req, "step"))
+    "attest": return do_attest(jget(req, "descriptor"))
+    "init": return do_init(state_of(req))
+    "validate": return do_validate(state_of(req), jget(req, "step"),
+                                   jget(req, "event_coord"),
+                                   jget(req, "index_line"))
+    "verify": return do_verify(state_of(req))
+    default: runerr(1, "unknown cmd " || cmd)
+  }
+end
+
+procedure unframe(line)
+  if line[1:5] == "GZ1:" then
+    return gunzip_bytes(b64dec(line[5:0]))
+  return line
+end
+
+procedure handle_line(line)
+  local req, out
+  req := json_parse(unframe(line))
+  out := json_write(dispatch(req))
+  if *out > 8192 then
+    return "GZ1:" || b64enc(gzip_bytes(out))
+  return out
+end
+
+procedure handle_line_safe(line)
+  local out
+  &error := 1
+  out := handle_line(line) |
+         json_write(jobj([["error", "icon cli error"]]))
+  return out
+end
+
+procedure read_all_input()
+  local data, chunk
+  data := ""
+  while chunk := reads(&input, 65536) do data ||:= chunk
+  return data
+end
+
+procedure main(args)
+  local line, text
+  IMPL := "icon"
+  INDEX_COORD := coord_root()
+  KEYS_COORD := [1, 1, 1, 1, 1, 1, 1, 1, 2]
+  KH_COORD := [1, 1, 1, 1, 1, 1, 1, 1, 3]
+  EVPREFIX := [1, 1, 1, 1, 1, 1, 2, 1]
+  CACHE := &null
+  &error := 1   ## runtime errors become failure; handle_line_safe reports them
+  TMPCOUNTER := 0
+  JNULL1 := JNull()
+  phext_init_globals()
+  if *args >= 1 & args[1] == "serve" then {
+    while line := read(&input) do {
+      if *trim(line) > 0 then {
+        writes(&output, handle_line_safe(trim(line)), "\n")
+        flush(&output)
+      }
+    }
+  } else {
+    text := read_all_input()
+    if *trim(text) > 0 then {
+      writes(&output, handle_line_safe(trim(text)), "\n")
+      flush(&output)
+    }
+  }
+  exit(0)
+end

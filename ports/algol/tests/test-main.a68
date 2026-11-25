@@ -1,0 +1,264 @@
+# Test suite main for libphext-algol -- plain assertions. #
+# Assembled by build.sh: BEGIN + phext.decl.a68 + this file + END. #
+# Run: test_phext <fixtures_dir> #
+
+INT checks := 0, failures := 0;
+
+PROC ok = (BOOL cond, STRING name) VOID:
+BEGIN
+  checks +:= 1;
+  IF NOT cond THEN
+    failures +:= 1;
+    print (("FAIL: ", name, newline))
+  FI
+END;
+
+PROC eqs = (STRING a, STRING b, STRING name) VOID:
+  ok (a = b, name);
+
+PROC eqi = (INT a, INT b, STRING name) VOID:
+  ok (a = b, name);
+
+PROC c9 = (STRING s) []INT:
+BEGIN
+  INT n;
+  [1:9]INT c := parse coord (s, n);
+  c
+END;
+
+# fixture files are binary; a68g file transput is not byte-safe #
+# (bin possible = FALSE on disk channels), so fixture bytes cross #
+# through base64(1) and are decoded in-language (b64.decl.a68) #
+PROC read whole file = (STRING path) STRING:
+BEGIN
+  STRING fb := tmp name ("fix");
+  INT rc := system ("base64 < " + path + " > " + fb + "; echo >> " + fb);
+  STRING data := b64 dec (read text file (fb));
+  system ("rm -f " + fb);
+  data
+END;
+
+STRING sb := REPR (23), sec := REPR (24), lib := REPR (1);
+
+# coordinate #
+eqs (coord str (c9 ("1.2.3/4.5.6/7.8.9")), "1.2.3/4.5.6/7.8.9",
+     "coord format");
+ok (coord cmp (c9 ("1.1.1/1.1.1/1.1.1"), c9 ("1.1.1/1.1.1/1.1.2")) < 0,
+    "order scroll");
+ok (coord cmp (c9 ("1.1.1/1.1.1/1.1.9"), c9 ("1.1.1/1.1.2/1.1.1")) < 0,
+    "order section");
+ok (coord cmp (c9 ("2.1.1/1.1.1/1.1.1"), c9 ("1.9.9/9.9.9/9.9.9")) > 0,
+    "order library");
+eqs (coord str (c9 ("1.1.1/1.1.1/1.1.1")), "1.1.1/1.1.1/1.1.1", "root");
+BEGIN
+  INT n;
+  [1:9]INT cc := parse coord ("0.1.1/1.1.1/1.1.1", n);
+  ok (NOT coord valid (cc, n), "coord rejects 0");
+  cc := parse coord ("1.1/1.1.1/1.1.1", n);
+  ok (NOT coord valid (cc, n), "coord rejects short")
+END;
+
+# phokenize #
+BEGIN
+  FLEX [1:0]STRING k, t;
+  FLEX [1:0]INT c;
+  phokenize ("hello", k, t, c);
+  eqi (UPB k, 1, "one scroll");
+  eqs (coord str (sl coord (c, 1)), "1.1.1/1.1.1/1.1.1", "first coord");
+  eqs (t[1], "hello", "first text");
+  phokenize ("a" + sb + "b" + sb + sb + "c" + REPR (10) + "line2",
+             k, t, c);
+  eqi (UPB k, 3, "scroll breaks");
+  eqs (coord str (sl coord (c, 2)), "1.1.1/1.1.1/1.1.2", "second coord");
+  eqs (coord str (sl coord (c, 3)), "1.1.1/1.1.1/1.1.4",
+       "gap coord advance");
+  eqs (t[3], "c" + REPR (10) + "line2", "newline is ordinary text");
+  phokenize ("x" + lib + "y", k, t, c);
+  eqs (coord str (sl coord (c, 2)), "2.1.1/1.1.1/1.1.1",
+       "library break resets");
+  phokenize ("x" + sec + "y", k, t, c);
+  eqs (coord str (sl coord (c, 2)), "1.1.1/1.1.1/1.2.1",
+       "section break");
+  phokenize ("", k, t, c);
+  eqi (UPB k, 0, "empty buffer");
+  phokenize (REPR (97) + REPR (0) + REPR (255) + REPR (98), k, t, c);
+  eqi (UPB k, 1, "binary text is one scroll");
+  eqi (UPB t[1], 4, "binary text preserved")
+END;
+
+# round trip #
+BEGIN
+  STRING sample := "alpha" + sb + "beta" + sec + "gamma" + lib +
+                   "delta";
+  eqs (normalize (sample), sample, "round trip sample");
+  FLEX [1:0]STRING k, t;
+  FLEX [1:0]INT c;
+  sl append (k, t, c, c9 ("1.1.1/1.1.1/1.1.2"), "two");
+  sl append (k, t, c, c9 ("1.1.1/1.1.1/1.1.1"), "one");
+  eqs (dephokenize (k, t, c, TRUE), "one" + sb + "two",
+       "dephokenize sorts canonically");
+  STRING lead := sb + sb + "lead";
+  eqs (normalize (normalize (lead)), normalize (lead),
+       "normalize idempotent")
+END;
+
+# fetch incl. gaps #
+BEGIN
+  STRING buf := "one" + sb + "two" + sb + sb + "four";
+  eqs (phext fetch (buf, c9 ("1.1.1/1.1.1/1.1.1")), "one", "fetch 1");
+  eqs (phext fetch (buf, c9 ("1.1.1/1.1.1/1.1.4")), "four", "fetch 4");
+  eqs (phext fetch (buf, c9 ("1.1.1/1.1.1/1.1.3")), "",
+       "gap fetch is empty");
+  eqs (phext fetch (buf, c9 ("9.9.9/9.9.9/9.9.9")), "",
+       "far gap fetch is empty");
+  eqs (phext fetch ("", c9 ("1.1.1/1.1.1/1.1.1")), "",
+       "fetch empty buffer")
+END;
+
+# insert #
+BEGIN
+  STRING res := phext insert ("base", c9 ("1.1.1/1.1.1/1.1.1"),
+                              "+more");
+  eqs (phext fetch (res, c9 ("1.1.1/1.1.1/1.1.1")), "base+more",
+       "insert appends after existing");
+  res := phext insert ("", c9 ("1.1.1/1.1.1/1.1.3"), "new");
+  eqs (phext fetch (res, c9 ("1.1.1/1.1.1/1.1.3")), "new",
+       "insert creates at gap");
+  eqs (res, sb + sb + "new", "insert at gap emits breaks");
+  res := phext insert ("a" + sb + "c", c9 ("1.1.1/1.1.1/1.1.2"), "b");
+  eqs (phext fetch (res, c9 ("1.1.1/1.1.1/1.1.2")), "cb",
+       "insert merges existing + inserted")
+END;
+
+# replace / remove -- coordinate-preserving #
+BEGIN
+  eqs (phext replace ("old" + sb + "keep", c9 ("1.1.1/1.1.1/1.1.1"),
+                      "new"),
+       "new" + sb + "keep", "replace overwrites");
+  STRING res := phext replace ("a", c9 ("1.1.1/1.1.1/1.1.5"), "deep");
+  eqs (phext fetch (res, c9 ("1.1.1/1.1.1/1.1.5")), "deep",
+       "replace creates");
+  res := phext remove ("a" + sb + "b" + sb + "c",
+                       c9 ("1.1.1/1.1.1/1.1.2"));
+  eqs (res, "a" + sb + sb + "c",
+       "remove leaves a gap (no renumbering)");
+  eqs (phext fetch (res, c9 ("1.1.1/1.1.1/1.1.2")), "",
+       "removed coordinate reads empty");
+  eqs (phext fetch (res, c9 ("1.1.1/1.1.1/1.1.3")), "c",
+       "neighbour keeps its coordinate");
+  eqi (UPB phext remove ("only", c9 ("1.1.1/1.1.1/1.1.1")), 0,
+       "remove sole scroll");
+  eqs (phext remove ("a", c9 ("5.5.5/5.5.5/5.5.5")), "a",
+       "remove gap is a no-op")
+END;
+
+# explode / implode via phokenize + dephokenize #
+BEGIN
+  FLEX [1:0]STRING k, t;
+  FLEX [1:0]INT c;
+  phokenize ("x" + sb + "y", k, t, c);
+  eqi (UPB k, 2, "explode count");
+  eqs (dephokenize (k, t, c, TRUE), "x" + sb + "y",
+       "implode round trip")
+END;
+
+# Dynamic + Transitive equivalence over an edit sequence #
+BEGIN
+  dyn init ("", 4);
+  trn init ("");
+  STRING str := "";
+  PROC step = (STRING op, STRING coord, STRING text) VOID:
+  BEGIN
+    [1:9]INT cc := c9 (coord);
+    IF op = "insert" THEN
+      dyn insert (cc, text);
+      trn insert (cc, text);
+      str := phext insert (str, cc, text)
+    ELIF op = "replace" THEN
+      dyn replace (cc, text);
+      trn replace (cc, text);
+      str := phext replace (str, cc, text)
+    ELSE
+      dyn remove (cc);
+      trn remove (cc);
+      str := phext remove (str, cc)
+    FI;
+    eqs (dyn serialize, str,
+         "dynamic == string after " + op + " " + coord);
+    eqs (trn serialize, str,
+         "transitive == string after " + op + " " + coord);
+    eqs (dyn fetch (cc), phext fetch (str, cc),
+         "dynamic fetch after op");
+    eqs (trn fetch (cc), phext fetch (str, cc),
+         "transitive fetch after op")
+  END;
+  step ("insert", "1.1.1/1.1.1/1.1.1", "alpha");
+  step ("insert", "1.1.1/1.1.1/1.1.3", "gamma");
+  step ("insert", "1.1.1/1.1.1/1.1.2", "beta");
+  step ("insert", "1.1.1/1.1.1/1.1.2", "+");
+  step ("replace", "2.1.1/1.1.1/1.1.1", "lib2");
+  step ("remove", "1.1.1/1.1.1/1.1.3", "");
+  eqs (dyn fetch (c9 ("1.1.1/1.1.1/1.1.3")), "",
+       "dynamic removed coord is gap");
+  eqs (trn fetch (c9 ("1.1.1/1.1.1/1.1.3")), "",
+       "transitive removed coord is gap");
+  eqs (dyn fetch (c9 ("2.1.1/1.1.1/1.1.1")), "lib2",
+       "dynamic neighbour unmoved");
+  eqs (trn fetch (c9 ("2.1.1/1.1.1/1.1.1")), "lib2",
+       "transitive neighbour unmoved");
+  dyn insert (c9 ("1.1.1/1.1.1/1.1.1"), "");
+  trn insert (c9 ("1.1.1/1.1.1/1.1.1"), "");
+  dyn replace (c9 ("1.1.1/1.1.1/1.1.1"), "");
+  trn replace (c9 ("1.1.1/1.1.1/1.1.1"), "");
+  eqi (dyn len, trn len, "store lengths agree")
+END;
+
+# capacity discipline #
+BEGIN
+  dyn init ("", 4);
+  FOR i FROM 1 TO 64 DO
+    [1:9]INT cc;
+    FOR d FROM 1 TO 8 DO cc[d] := 1 OD;
+    cc[9] := i;
+    dyn append (cc, "s")
+  OD;
+  eqi (dyncap, 64, "capacity doubles to fit 64");
+  ok (dynrc <= 7, "resize count is logarithmic")
+END;
+
+# fixtures: 16 input.phext under the fixtures dir, listed by the #
+# driver shell (build/run_tests.sh writes the list to a file whose #
+# path arrives via the FIXLIST environment through a file in /tmp) #
+BEGIN
+  STRING listpath := "/tmp/algol-fixtures.txt";
+  FILE lf;
+  INT rc := open (lf, listpath, stand in channel);
+  IF rc /= 0 THEN
+    print (("fixtures: skipped (no list)", newline))
+  ELSE
+    BOOL eof := FALSE;
+    on file end (lf, (REF FILE dummy) BOOL: (eof := TRUE; TRUE));
+    INT total := 0, identical := 0, idem := 0;
+    WHILE NOT eof DO
+      STRING path := "";
+      get (lf, (path, newline));
+      IF NOT eof AND UPB path > 0 THEN
+        STRING data := read whole file (path);
+        total +:= 1;
+        STRING n1 := normalize (data);
+        IF n1 = data THEN identical +:= 1 FI;
+        IF normalize (n1) = n1 THEN idem +:= 1 FI
+      FI
+    OD;
+    close (lf);
+    print (("fixtures: ", whole (total, 0), " input.phext, ",
+            whole (identical, 0), " byte-identical round-trips, ",
+            whole (idem, 0), " normalize-idempotent", newline));
+    eqi (total, 16, "16 fixtures found");
+    eqi (identical, total, "fixtures byte-identical round-trips");
+    eqi (idem, total, "all fixtures normalize idempotently")
+  FI
+END;
+
+print (("algol suite: ", whole (checks, 0), " checks, ",
+        whole (failures, 0), " failures", newline))

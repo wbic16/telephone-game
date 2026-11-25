@@ -1,0 +1,4 @@
+#!/bin/sh
+# telephone -- hub launcher for the ksh93 telephone CLI: execs the
+# port's own telephone.ksh under the port's ksh93, byte mode.
+exec env LC_ALL=C /home/wbic16/telephone-ksh/ksh93/ksh /home/wbic16/telephone-ksh/port/src/telephone.ksh "$@"

@@ -1,0 +1,7 @@
+{
+ "id": "cobol",
+ "adapter": "ports/cobol/adapter",
+ "status": "playing",
+ "kind": "port",
+ "note": "libphext COBOL port (GnuCOBOL 3.2, micromamba/conda-forge user-level env in ~/telephone-cobol/env on aletheia-core, no sudo), 0.6.1 parity; native suite 25/25 checks, fixtures 16/16 byte-identical round-trips + normalize idempotent; adapter contract v2 self-test PASS; one-shot verify vs games/smoke-001/stress.phext: {\"impl\": \"cobol\", \"verdict\": \"pass\", \"placements_checked\": 30, \"first_failure\": null}; serve init at game scale (games/test-001 snapshot copy, 2,236,326 bytes, GZ1 gzip framing per wave-2 pattern) replied {\"impl\":\"cobol\",\"verdict\":\"pass\"} in 6.15 s"
+}

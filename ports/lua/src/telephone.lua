@@ -296,13 +296,39 @@ local function handle(req)
   error("unknown cmd "..cmd)
 end
 
+-- Game-scale framing (2026-11-24): lines over 8 KB may arrive gzip-framed as
+-- "GZ1:" + base64(gzip(line)) — the fleet-ssh channel is ~25-70 KB/s
+-- and raw base64 state lines took minutes at 1,000 placements. Lua
+-- has no zlib, so (de)compression shells to the system gzip(1) on
+-- temp files. Lossless; plain lines unchanged.
+local function gz_unframe(s)
+  local raw = W.b64decode(s:sub(5))
+  local fin, fout = os.tmpname(), os.tmpname()
+  local f = io.open(fin, "wb"); f:write(raw); f:close()
+  os.execute("gzip -dc " .. fin .. " > " .. fout)
+  local g = io.open(fout, "rb"); local out = g:read("*a"); g:close()
+  os.remove(fin); os.remove(fout)
+  return out
+end
+local function gz_frame(s)
+  local fin, fout = os.tmpname(), os.tmpname()
+  local f = io.open(fin, "wb"); f:write(s); f:close()
+  os.execute("gzip -c " .. fin .. " > " .. fout)
+  local g = io.open(fout, "rb"); local gz = g:read("*a"); g:close()
+  os.remove(fin); os.remove(fout)
+  return "GZ1:" .. W.b64encode(gz)
+end
+
 io.stdout:setvbuf("line")
 if arg[1]=="serve" then
   for line in io.stdin:lines() do
     if line:match("%S") then
+      if line:sub(1, 4) == "GZ1:" then line = gz_unframe(line) end
       local ok, out = pcall(function() return handle(W.json_decode(line)) end)
       if not ok then out = obj{error=tostring(out)} end
-      io.stdout:write(W.json_encode(out), "\n")
+      local outj = W.json_encode(out)
+      if #outj > 8192 then outj = gz_frame(outj) end
+      io.stdout:write(outj, "\n")
     end
   end
 else

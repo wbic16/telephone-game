@@ -495,7 +495,17 @@ handle() {
 if [[ ${1:-} == serve ]]; then
     while IFS= read -r line || [[ -n $line ]]; do
         [[ $line =~ ^[[:space:]]*$ ]] && continue
+        # Game-scale framing (2026-11-24): lines over 8 KB may arrive
+        # gzip-framed as "GZ1:" + base64(gzip(line)) -- the fleet-ssh
+        # channel is ~25-70 KB/s and raw base64 state lines took
+        # minutes at 1,000 placements. Lossless; plain lines unchanged.
+        if [[ $line == GZ1:* ]]; then
+            line=$(printf '%s' "${line:4}" | base64 -d | gzip -dc)
+        fi
         handle "$line"
+        if (( ${#RESP} > 8192 )); then
+            RESP="GZ1:$(printf '%s' "$RESP" | gzip -c | base64 -w0)"
+        fi
         printf '%s\n' "$RESP"
     done
 else

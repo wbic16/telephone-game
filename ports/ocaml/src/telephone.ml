@@ -449,17 +449,51 @@ let handle req =
   | "verify" -> verify_game (state_bytes req) (json_string (json_get "pubkeys" req))
   | other -> failwith ("unknown cmd " ^ other)
 
+(* Game-scale framing (2026-11-24): lines over 8 KB may arrive
+   gzip-framed as "GZ1:" + base64(gzip(line)) — the fleet-ssh channel
+   is ~25-70 KB/s and raw base64 state lines took minutes at 1,000
+   placements. OCaml stdlib has no zlib, so (de)compression shells to
+   the system gzip(1) on temp files (the same idiom as the gpg calls
+   above). Lossless; plain lines unchanged. *)
+let gz_via data flag =
+  let fin = Filename.temp_file "gzframe" ".in" in
+  let fout = Filename.temp_file "gzframe" ".out" in
+  let oc = open_out_bin fin in
+  output_string oc data;
+  close_out oc;
+  ignore (Sys.command ("gzip " ^ flag ^ " " ^ fin ^ " > " ^ fout));
+  let ic = open_in_bin fout in
+  let out = read_all ic in
+  close_in ic;
+  Sys.remove fin;
+  Sys.remove fout;
+  out
+
+let gz_unframe s =
+  gz_via (b64_decode (String.sub s 4 (String.length s - 4))) "-dc"
+
+let gz_frame s = "GZ1:" ^ b64_encode (gz_via s "-c")
+
 let () =
   if Array.length Sys.argv > 1 && Sys.argv.(1) = "serve" then begin
     (try
        while true do
          let line = input_line stdin in
          if String.trim line <> "" then begin
+           let line =
+             if String.length line >= 4 && String.sub line 0 4 = "GZ1:"
+             then gz_unframe line
+             else line
+           in
            let out =
              try handle (parse_json line)
              with e -> Obj [ ("error", Str (Printexc.to_string e)) ]
            in
-           print_string (canon_json out ^ "\n");
+           let outj = canon_json out in
+           let outj =
+             if String.length outj > 8192 then gz_frame outj else outj
+           in
+           print_string (outj ^ "\n");
            flush stdout
          end
        done

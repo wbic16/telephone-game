@@ -1,0 +1,7 @@
+{
+ "adapter": "ports/crystal/adapter",
+ "id": "crystal",
+ "kind": "port",
+ "note": "libphext-crystal (Crystal 1.16.3 official tarball, user-level in ~/telephone-crystal on aletheia-core; stdlib only \u2014 hand-written JSON, Digest::SHA256, Base64, Compress::Gzip). Suite green (82 checks, fixtures 16/16 byte-identical + 16/16 normalize-idempotent); remove is coordinate-preserving (gap, no renumbering) per libphext-py. v2 adapter self-test PASS; serve init (deferred cache) + driver-form validate pass; verify vs games/smoke-001/stress.phext PASS/30 verbatim {\"first_failure\": null, \"impl\": \"crystal\", \"placements_checked\": 30, \"verdict\": \"pass\"}. Game-scale (snapshot copy of games/test-001/stress.phext, 2.2 MB/1,000 placements): serve init pass in 0.06 s (driver timeout 30 s); serve validate (post-turn snapshot method) pass in 7.05 s (driver timeout 60 s). Wire framing GZ1 over 8 KB in adapter + hub CLI.",
+ "status": "playing"
+}

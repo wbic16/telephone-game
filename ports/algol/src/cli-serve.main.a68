@@ -1,0 +1,12 @@
+# cli-serve.main.a68 -- serve entry: JSON lines on stdin/stdout, #
+# GZ1 framing per harness/serve-conformance.md (handled in #
+# handle line). Appended after the decl fragments by build.sh. #
+BOOL serve eof := FALSE;
+on file end (stand in, (REF FILE dummy) BOOL: (serve eof := TRUE; TRUE));
+WHILE NOT serve eof DO
+  STRING line := "";
+  get (stand in, (line, newline));
+  IF NOT serve eof AND UPB line > 0 THEN
+    put (stand out, (handle line (line), newline))
+  FI
+OD

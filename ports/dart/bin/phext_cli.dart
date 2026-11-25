@@ -638,11 +638,22 @@ Future<void> main(List<String> args) async {
   if (args.isNotEmpty && args.first == 'serve') {
     await for (final line
         in stdin.transform(utf8.decoder).transform(const LineSplitter())) {
-      final t = line.trim();
+      var t = line.trim();
       if (t.isEmpty) continue;
       try {
+        // Game-scale framing (2026-11-24): lines over 8 KB may arrive
+        // gzip-framed as "GZ1:" + base64(gzip(line)) — the fleet-ssh
+        // channel is ~25-70 KB/s and raw base64 state lines took
+        // minutes at 1,000 placements. Lossless; plain lines unchanged.
+        if (t.startsWith('GZ1:')) {
+          t = utf8.decode(gzip.decode(base64.decode(t.substring(4))));
+        }
         final req = jsonDecode(t) as Map<String, dynamic>;
-        stdout.writeln(jsonEncode(await dispatch(req)));
+        var out = jsonEncode(await dispatch(req));
+        if (out.length > 8192) {
+          out = 'GZ1:${base64.encode(gzip.encode(utf8.encode(out)))}';
+        }
+        stdout.writeln(out);
       } catch (e) {
         stdout.writeln(jsonEncode({'error': e.toString()}));
       }

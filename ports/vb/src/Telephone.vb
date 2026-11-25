@@ -5,6 +5,7 @@
 ' key home $TELEPHONE_GNUPG_HOME or ~/telephone-vb/gnupg.
 Imports System.Diagnostics
 Imports System.IO
+Imports System.IO.Compression
 Imports System.Text
 
 Module Telephone
@@ -415,19 +416,47 @@ Module Telephone
         End Select
     End Function
 
+    ' Game-scale framing (2026-11-24): lines over 8 KB may arrive
+    ' gzip-framed as "GZ1:" + base64(gzip(line)) — the fleet-ssh
+    ' channel is ~25-70 KB/s and raw base64 state lines took minutes
+    ' at 1,000 placements. Lossless; plain lines unchanged.
+    Private Function GzUnframe(s As String) As String
+        Dim raw = Convert.FromBase64String(s.Substring(4))
+        Using msIn As New MemoryStream(raw),
+              gz As New GZipStream(msIn, CompressionMode.Decompress),
+              msOut As New MemoryStream()
+            gz.CopyTo(msOut)
+            Return Encoding.UTF8.GetString(msOut.ToArray())
+        End Using
+    End Function
+
+    Private Function GzFrame(s As String) As String
+        Dim bytes = Encoding.UTF8.GetBytes(s)
+        Using msOut As New MemoryStream()
+            Using gz As New GZipStream(msOut, CompressionMode.Compress, True)
+                gz.Write(bytes, 0, bytes.Length)
+            End Using
+            Return "GZ1:" & Convert.ToBase64String(msOut.ToArray())
+        End Using
+    End Function
+
     Sub Main(args As String())
         If args.Length > 0 AndAlso args(0) = "serve" Then
             Dim line As String
             line = Console.ReadLine()
             While line IsNot Nothing
                 If line.Trim() <> "" Then
+                    Dim lineIn = line.Trim()
+                    If lineIn.StartsWith("GZ1:") Then lineIn = GzUnframe(lineIn)
                     Dim out As JVal
                     Try
-                        out = Handle(DirectCast(ParseJson(line), JObj))
+                        out = Handle(DirectCast(ParseJson(lineIn), JObj))
                     Catch ex As Exception
                         out = ObjOf("error", New JStr(ex.GetType().Name & ": " & ex.Message))
                     End Try
-                    Console.Out.Write(Canon(out) & vbLf)
+                    Dim outs = Canon(out)
+                    If outs.Length > 8192 Then outs = GzFrame(outs)
+                    Console.Out.Write(outs & vbLf)
                     Console.Out.Flush()
                 End If
                 line = Console.ReadLine()

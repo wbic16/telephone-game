@@ -715,17 +715,45 @@ function dispatch(req)
     end
 end
 
+# Game-scale framing (2026-11-24): lines over 8 KB may arrive
+# gzip-framed as "GZ1:" + base64(gzip(line)) — the fleet-ssh channel
+# is ~25-70 KB/s and raw base64 state lines took minutes at 1,000
+# placements. Julia stdlib has no zlib, so (de)compression shells to
+# the system gzip(1) on a temp file. Lossless; plain lines unchanged.
+function gz_unframe(t::AbstractString)
+    tmp = tempname()
+    write(tmp, base64decode(t[5:end]))
+    out = read(`gzip -dc $tmp`, String)
+    rm(tmp)
+    return out
+end
+
+function gz_frame(s::String)
+    tmp = tempname()
+    write(tmp, s)
+    out = read(`gzip -c $tmp`)
+    rm(tmp)
+    return "GZ1:" * base64encode(out)
+end
+
 function main()
     if !isempty(ARGS) && ARGS[1] == "serve"
         for line in eachline(stdin)
             t = strip(line)
             isempty(t) && continue
             resp = try
+                if startswith(t, "GZ1:")
+                    t = gz_unframe(t)
+                end
                 dispatch(jparse(t))
             catch e
                 Dict("error" => sprint(showerror, e))
             end
-            println(jstr(resp))
+            out = jstr(resp)
+            if length(out) > 8192
+                out = gz_frame(out)
+            end
+            println(out)
             flush(stdout)
         end
         return

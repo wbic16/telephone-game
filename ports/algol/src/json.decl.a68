@@ -1,0 +1,428 @@
+# json.decl.a68 -- canonical JSON for the adapter contract. #
+# A JVAL is an index into parallel global rows (0 = no node); #
+# object members and array elements are sibling chains by index. #
+# Index-based nodes are used because a68g 3.14's REF identity #
+# tests are unreliable in this build (verified empirically), so #
+# no REF NIL test appears anywhere in this port. #
+# Kinds: 0 null, 1 true, 2 false, 3 string, 4 number (raw token), #
+# 5 array, 6 object. Canonical writing sorts object keys and #
+# uses (",", ":") separators, matching python json.dumps with #
+# sort_keys=True and separators=(",", ":") on latin-1 text. #
+
+FLEX [1:0]INT jkind, jfirst, jnext;
+FLEX [1:0]STRING jsval, jkey;
+INT jcount := 0, jcap := 0;
+
+PROC jv mk = (INT k, STRING s) INT:
+BEGIN
+  IF jcount = jcap THEN
+    INT ncap := IF jcap = 0 THEN 256 ELSE jcap * 2 FI;
+    [1:ncap]INT nk, nf, nn;
+    [1:ncap]STRING ns, nky;
+    IF jcount > 0 THEN
+      nk[1:jcount] := jkind;
+      nf[1:jcount] := jfirst;
+      nn[1:jcount] := jnext;
+      ns[1:jcount] := jsval;
+      nky[1:jcount] := jkey
+    FI;
+    jkind := nk;
+    jfirst := nf;
+    jnext := nn;
+    jsval := ns;
+    jkey := nky;
+    jcap := ncap
+  FI;
+  jcount +:= 1;
+  jkind[jcount] := k;
+  jfirst[jcount] := 0;
+  jnext[jcount] := 0;
+  jsval[jcount] := s;
+  jkey[jcount] := "";
+  jcount
+END;
+
+PROC jv str = (STRING s) INT: jv mk (3, s);
+PROC jv num = (INT n) INT: jv mk (4, whole (n, 0));
+PROC jv bool = (BOOL b) INT: jv mk (IF b THEN 1 ELSE 2 FI, "");
+PROC jv null = INT: jv mk (0, "");
+PROC jv arr = INT: jv mk (5, "");
+PROC jv obj = INT: jv mk (6, "");
+
+# append child to an array/object node (chain order preserved; #
+# the canonical writer sorts object keys at write time) #
+PROC jv push = (INT parent, INT child) VOID:
+BEGIN
+  INT fc := jfirst[parent];
+  IF fc = 0 THEN
+    jfirst[parent] := child
+  ELSE
+    WHILE jnext[fc] /= 0 DO fc := jnext[fc] OD;
+    jnext[fc] := child
+  FI
+END;
+
+PROC jv set = (INT obj, STRING k, INT v) VOID:
+BEGIN
+  jkey[v] := k;
+  jv push (obj, v)
+END;
+
+# first member of an object with this key, or 0 #
+PROC jv get = (INT obj, STRING k) INT:
+BEGIN
+  INT r := 0;
+  IF obj /= 0 THEN
+    INT c := jfirst[obj];
+    WHILE c /= 0 AND r = 0 DO
+      IF jkey[c] = k THEN r := c ELSE c := jnext[c] FI
+    OD
+  FI;
+  r
+END;
+
+# deep copy of a node into fresh nodes (reusing a parsed node #
+# in another object would drag its sibling chain along, since #
+# children are linked by index) #
+PROC jv clone = (INT v) INT:
+BEGIN
+  INT n := jv mk (jkind[v], jsval[v]);
+  INT c := jfirst[v];
+  WHILE c /= 0 DO
+    INT cc := jv clone (c);
+    jkey[cc] := jkey[c];
+    jv push (n, cc);
+    c := jnext[c]
+  OD;
+  n
+END;
+
+PROC jv gets = (INT obj, STRING k) STRING:
+BEGIN
+  INT v := jv get (obj, k);
+  STRING r := "";
+  IF v /= 0 THEN r := jsval[v] FI;
+  r
+END;
+
+PROC jv geti = (INT obj, STRING k) INT:
+BEGIN
+  INT v := jv get (obj, k);
+  INT r := 0;
+  IF v /= 0 THEN
+    # parse the raw number token #
+    STRING s := jsval[v];
+    INT acc := 0, sign := 1, i := 1;
+    IF UPB s > 0 AND s[1] = "-" THEN sign := -1; i := 2 FI;
+    WHILE i <= UPB s AND s[i] >= "0" AND s[i] <= "9" DO
+      acc := acc * 10 + (ABS s[i] - ABS "0");
+      i +:= 1
+    OD;
+    r := sign * acc
+  FI;
+  r
+END;
+
+# ---------------------------------------------------------------- #
+# parsing: recursive descent over a STRING with a global cursor. #
+# The game corpus is latin-1, so \uXXXX at or below 255 is taken #
+# as the raw byte (matching the latin-1 text the driver emits); #
+# above that, the UTF-8 encoding is emitted. #
+
+STRING jsrc;
+INT jpos;
+
+PROC jv skip ws = VOID:
+BEGIN
+  BOOL going := TRUE;
+  WHILE going DO
+    IF jpos > UPB jsrc THEN
+      going := FALSE
+    ELSE
+      CHAR ch := jsrc[jpos];
+      IF ch = " " OR ch = REPR (10) OR ch = REPR (13) OR
+         ch = REPR (9) THEN
+        jpos +:= 1
+      ELSE
+        going := FALSE
+      FI
+    FI
+  OD
+END;
+
+
+PROC jv unescape = (STRING raw) STRING:
+BEGIN
+  STRING out := "", chunk := "";
+  INT i := 1, n := UPB raw;
+  WHILE i <= n DO
+    CHAR ch := raw[i];
+    IF ch = "\" AND i < n THEN
+      CHAR e := raw[i + 1];
+      i +:= 2;
+      IF e = "n" THEN chunk +:= REPR (10)
+      ELIF e = "t" THEN chunk +:= REPR (9)
+      ELIF e = "r" THEN chunk +:= REPR (13)
+      ELIF e = "b" THEN chunk +:= REPR (8)
+      ELIF e = "f" THEN chunk +:= REPR (12)
+      ELIF e = "u" THEN
+        INT v := 0;
+        FOR q FROM 0 TO 3 DO
+          CHAR h := raw[i + q];
+          INT d := 0;
+          IF h >= "0" AND h <= "9" THEN d := ABS h - ABS "0"
+          ELIF h >= "a" AND h <= "f" THEN d := ABS h - ABS "a" + 10
+          ELIF h >= "A" AND h <= "F" THEN d := ABS h - ABS "A" + 10
+          FI;
+          v := v * 16 + d
+        OD;
+        i +:= 4;
+        IF v <= 255 THEN
+          chunk +:= REPR (v)
+        ELSE
+          chunk +:= REPR (192 + idiv (v, 64));
+          chunk +:= REPR (128 + (v MOD 64))
+        FI
+      ELSE
+        chunk +:= e
+      FI
+    ELSE
+      chunk +:= ch;
+      i +:= 1
+    FI;
+    IF UPB chunk > 65536 THEN out +:= chunk; chunk := "" FI
+  OD;
+  out + chunk
+END;
+
+PROC jv parse string raw = STRING:
+BEGIN
+  jpos +:= 1;   # opening quote #
+  INT start := jpos;
+  BOOL hasesc := FALSE, done := FALSE;
+  WHILE NOT done DO
+    CHAR ch := jsrc[jpos];
+    IF ch = REPR (34) THEN
+      done := TRUE
+    ELIF ch = "\" THEN
+      hasesc := TRUE;
+      jpos +:= 2
+    ELSE
+      jpos +:= 1
+    FI
+  OD;
+  STRING raw := jsrc[start:jpos - 1];
+  jpos +:= 1;   # closing quote #
+  IF hasesc THEN jv unescape (raw) ELSE raw FI
+END;
+
+PROC jv parse value = INT:
+BEGIN
+  jv skip ws;
+  CHAR ch := jsrc[jpos];
+  INT r := 0;
+  IF ch = "{" THEN
+    r := jv obj;
+    jpos +:= 1;
+    jv skip ws;
+    IF jsrc[jpos] /= "}" THEN
+      BOOL more := TRUE;
+      WHILE more DO
+        jv skip ws;
+        STRING k := jv parse string raw;
+        jv skip ws;
+        jpos +:= 1;   # colon #
+        INT v := jv parse value;
+        jv set (r, k, v);
+        jv skip ws;
+        IF jsrc[jpos] = "," THEN jpos +:= 1 ELSE more := FALSE FI
+      OD
+    FI;
+    jpos +:= 1   # closing brace #
+  ELIF ch = "[" THEN
+    r := jv arr;
+    jpos +:= 1;
+    jv skip ws;
+    IF jsrc[jpos] /= "]" THEN
+      BOOL more := TRUE;
+      WHILE more DO
+        jv push (r, jv parse value);
+        jv skip ws;
+        IF jsrc[jpos] = "," THEN jpos +:= 1 ELSE more := FALSE FI
+      OD
+    FI;
+    jpos +:= 1   # closing bracket #
+  ELIF ch = REPR (34) THEN
+    r := jv str (jv parse string raw)
+  ELIF ch = "t" THEN
+    jpos +:= 4;
+    r := jv bool (TRUE)
+  ELIF ch = "f" THEN
+    jpos +:= 5;
+    r := jv bool (FALSE)
+  ELIF ch = "n" THEN
+    jpos +:= 4;
+    r := jv null
+  ELSE
+    INT start := jpos;
+    BOOL scanning := TRUE;
+    WHILE scanning DO
+      IF jpos > UPB jsrc THEN
+        scanning := FALSE
+      ELSE
+        CHAR c2 := jsrc[jpos];
+        IF (c2 >= "0" AND c2 <= "9") OR c2 = "-" OR c2 = "+" OR
+           c2 = "." OR c2 = "e" OR c2 = "E" THEN
+          jpos +:= 1
+        ELSE
+          scanning := FALSE
+        FI
+      FI
+    OD;
+    r := jv mk (4, jsrc[start:jpos - 1])
+  FI;
+  r
+END;
+
+PROC jv parse = (STRING text) INT:
+BEGIN
+  jsrc := text;
+  jpos := 1;
+  jv parse value
+END;
+
+# ---------------------------------------------------------------- #
+# canonical writing #
+
+PROC jv escape = (STRING s) STRING:
+BEGIN
+  # pre-sized buffer with index fills: per-char STRING += is #
+  # quadratic in this runtime (it copies the whole string), and #
+  # this proc runs over multi-MB base64 state strings #
+  INT n := UPB s;
+  STRING out := rep char (32, n * 6 + 2);
+  INT o := 1;
+  out[o] := REPR (34);
+  FOR i FROM 1 TO n DO
+    INT b := ABS s[i];
+    IF b = 34 OR b = 92 THEN
+      o +:= 1;
+      out[o] := "\";
+      o +:= 1;
+      out[o] := s[i]
+    ELIF b = 10 OR b = 13 OR b = 9 OR b = 8 OR b = 12 THEN
+      o +:= 1;
+      out[o] := "\";
+      o +:= 1;
+      out[o] := IF b = 10 THEN "n"
+                ELIF b = 13 THEN "r"
+                ELIF b = 9 THEN "t"
+                ELIF b = 8 THEN "b"
+                ELSE "f" FI
+    ELIF b < 32 OR b >= 127 THEN
+      STRING hex := "0123456789abcdef";
+      o +:= 1;
+      out[o] := "\";
+      o +:= 1;
+      out[o] := "u";
+      o +:= 1;
+      out[o] := "0";
+      o +:= 1;
+      out[o] := "0";
+      o +:= 1;
+      out[o] := hex[idiv (b, 16) + 1];
+      o +:= 1;
+      out[o] := hex[(b MOD 16) + 1]
+    ELSE
+      o +:= 1;
+      out[o] := s[i]
+    FI
+  OD;
+  o +:= 1;
+  out[o] := REPR (34);
+  out[1:o]
+END;
+
+PROC jv write = (INT v) STRING:
+BEGIN
+  INT k := jkind[v];
+  STRING r := "";
+  IF k = 0 THEN r := "null"
+  ELIF k = 1 THEN r := "true"
+  ELIF k = 2 THEN r := "false"
+  ELIF k = 3 THEN r := jv escape (jsval[v])
+  ELIF k = 4 THEN r := jsval[v]
+  ELIF k = 5 THEN
+    STRING out := "[";
+    BOOL first := TRUE;
+    INT c := jfirst[v];
+    WHILE c /= 0 DO
+      IF NOT first THEN out +:= "," FI;
+      first := FALSE;
+      out +:= jv write (c);
+      c := jnext[c]
+    OD;
+    r := out + "]"
+  ELIF k = 6 THEN
+    INT n := 0;
+    INT c := jfirst[v];
+    WHILE c /= 0 DO n +:= 1; c := jnext[c] OD;
+    [1:n]STRING mkeys;
+    [1:n]INT mvals;
+    c := jfirst[v];
+    FOR i FROM 1 TO n DO
+      mkeys[i] := jkey[c];
+      mvals[i] := c;
+      c := jnext[c]
+    OD;
+    [1:n]INT idx;
+    FOR i FROM 1 TO n DO idx[i] := i OD;
+    [1:n]INT aux;
+    INT width := 1;
+    WHILE width < n DO
+      INT lo := 1;
+      WHILE lo <= n DO
+        INT mid := lo + width - 1;
+        IF mid > n THEN mid := n FI;
+        INT hi := lo + 2 * width - 1;
+        IF hi > n THEN hi := n FI;
+        IF mid > hi THEN mid := hi FI;
+        INT a := lo, b := mid + 1, kk := lo;
+        WHILE a <= mid AND b <= hi DO
+          IF mkeys[idx[a]] <= mkeys[idx[b]] THEN
+            aux[kk] := idx[a];
+            a +:= 1
+          ELSE
+            aux[kk] := idx[b];
+            b +:= 1
+          FI;
+          kk +:= 1
+        OD;
+        WHILE a <= mid DO
+          aux[kk] := idx[a];
+          a +:= 1;
+          kk +:= 1
+        OD;
+        WHILE b <= hi DO
+          aux[kk] := idx[b];
+          b +:= 1;
+          kk +:= 1
+        OD;
+        lo +:= 2 * width
+      OD;
+      FOR i FROM 1 TO n DO idx[i] := aux[i] OD;
+      width *:= 2
+    OD;
+    STRING out := "{";
+    FOR i FROM 1 TO n DO
+      IF i > 1 THEN out +:= "," FI;
+      out +:= jv escape (mkeys[idx[i]]);
+      out +:= ":";
+      out +:= jv write (mvals[idx[i]])
+    OD;
+    r := out + "}"
+  FI;
+  r
+END;
+
+PROC jv canon = (INT v) STRING: jv write (v);

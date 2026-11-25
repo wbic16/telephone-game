@@ -1,0 +1,7 @@
+{
+ "id": "ada",
+ "adapter": "ports/ada/adapter",
+ "status": "playing",
+ "kind": "port",
+ "note": "libphext Ada port (GNAT 14.2.1 via Alire user-level toolchain on aletheia-core, no sudo), 0.6.1 parity; native suite 41/41 checks, fixtures 16/16 byte-identical round-trips + normalize idempotent; adapter contract v2 self-test PASS; one-shot verify vs games/smoke-001/stress.phext: {\"first_failure\": null, \"impl\": \"ada\", \"placements_checked\": 30, \"verdict\": \"pass\"}; serve init at game scale (games/test-001 snapshot copy, 2,236,326 bytes, GZ1 framing) replied {\"impl\":\"ada\",\"verdict\":\"pass\"} in 10.58 s"
+}

@@ -112,33 +112,52 @@ def main():
             assert resp["state_sha256"] == sha256(base64.b64decode(resp["state_b64"]))
             return base64.b64decode(resp["state_b64"])
 
+        # Pinned formats (harness/ADAPTER-CONTRACT.md): the keys scroll
+        # is the "== <id> ==\n<armored public key>" block with a trailing
+        # newline, and the keys-hash scroll is the sha256 hex of the keys
+        # scroll text exactly as inscribed (no trimming).
+        keys_text = "== %s ==\n%s\n" % (IMPL, pubkey.strip())
         state = b""
-        state = apply(state, "1.1.1/1.1.1/1.1.2", pubkey)
+        state = apply(state, "1.1.1/1.1.1/1.1.2", keys_text)
         state = apply(state, "1.1.1/1.1.1/1.1.3",
-                      sha256(pubkey.rstrip().encode()))
+                      sha256(keys_text.encode()))
         prior = state
         position = "844.178.692/976.4.46/689.816.709"
         step = serve.call({"cmd": "choose", "state": b64(prior),
                            "position": position, "turn": 1})
         check(step["op"] == "insert", f"choose is insert-only: {step['op']}")
         state = apply(state, step["coordinate"], step["text"])
+        placed_state = state
         val = serve.call({"cmd": "validate", "state": b64(state), "step": step,
                           "prior_state": b64(prior)})
         check(val["verdict"] == "pass", f"validate placement: {val.get('detail')}")
 
-        descriptor = {"turn": 1, "impl": IMPL, "coordinate": step["coordinate"],
+        # Pinned attestation descriptor: file_sha256 is the file hash
+        # after the placement insert, before inscription.
+        descriptor = {"turn": 1, "coordinate": step["coordinate"],
                       "scroll_sha256": sha256(step["text"].encode()),
-                      "prior_sha256": sha256(prior)}
+                      "file_sha256": sha256(placed_state)}
         att = serve.call({"cmd": "attest", "descriptor": descriptor})
         signature = att["signature"]
         check("BEGIN PGP SIGNATURE" in signature, "attest returns armored signature")
-        event = dict(descriptor)
-        event["signature"] = signature
+        # Pinned event scroll: canonical JSON {"prev": null, "body": {...}}
+        # with att = base64 of the armored detached signature.
+        body = {"type": "placement", "turn": 1, "actor": IMPL,
+                "elect_by": IMPL, "coord": step["coordinate"],
+                "text_sha256": descriptor["scroll_sha256"],
+                "file_sha256": descriptor["file_sha256"],
+                "att": base64.b64encode(signature.encode()).decode(),
+                "echoes": [], "consensus_prev": {}}
+        event = {"prev": None, "body": body}
         state = apply(state, "1.1.1/1.1.1/2.1.1", canon(event))
+        # Pinned index scroll: header line, then
+        # "<turn> <coordinate> <sha256 of scroll text> <actor id>".
         state = apply(state, "1.1.1/1.1.1/1.1.1",
-                      "%s %s\n" % (step["coordinate"], descriptor["scroll_sha256"]))
+                      "# exocortical stress testing - index of generated "
+                      "scrolls\n1 %s %s %s\n"
+                      % (step["coordinate"], descriptor["scroll_sha256"], IMPL))
 
-        ver = serve.call({"cmd": "verify", "state": b64(state), "pubkeys": pubkey})
+        ver = serve.call({"cmd": "verify", "state": b64(state), "pubkeys": keys_text})
         check(ver["verdict"] == "pass" and ver["placements_checked"] == 1,
               f"verify one-placement stress.phext: {ver}")
     finally:

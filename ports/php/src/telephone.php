@@ -567,13 +567,24 @@ if ($serve) {
         if ($line === '') {
             continue;
         }
+        // Game-scale framing (2026-11-24): lines over 8 KB may arrive gzip-framed as
+        // "GZ1:" + base64(gzip(line)) — the fleet-ssh channel is
+        // ~25-70 KB/s and raw base64 state lines took minutes at
+        // 1,000 placements. Lossless; plain lines unchanged.
+        if (substr($line, 0, 4) === 'GZ1:') {
+            $line = gzdecode(base64_decode(substr($line, 4)));
+        }
         $req = json_decode($line, true);
         try {
             $out = is_array($req) ? handle($req) : ['error' => 'request is not a JSON object'];
         } catch (Throwable $e) {
             $out = ['error' => $e->getMessage()];
         }
-        echo json_encode($out), "\n";
+        $outj = json_encode($out);
+        if (strlen($outj) > 8192) {
+            $outj = 'GZ1:' . base64_encode(gzencode($outj));
+        }
+        echo $outj, "\n";
         fflush(STDOUT);
     }
     exit(0);

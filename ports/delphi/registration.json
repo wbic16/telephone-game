@@ -1,0 +1,7 @@
+{
+ "id": "delphi",
+ "adapter": "ports/delphi/adapter",
+ "status": "playing",
+ "kind": "port",
+ "note": "libphext Delphi/Object Pascal port (Free Pascal 3.2.2, Ubuntu pool .debs extracted user-level under ~/telephone-delphi/root on aletheia-core, no sudo; native SHA-256 unit in src/sha256.pas as Debian's FPC units lack fcl-hash sha256), 0.6.1 parity; native suite 46/46 checks, fixtures 16/16 byte-identical round-trips + normalize idempotent; adapter contract v2 self-test PASS; one-shot verify vs games/smoke-001/stress.phext: {\"first_failure\": null, \"impl\": \"delphi\", \"placements_checked\": 30, \"verdict\": \"pass\"}; serve init at game scale (games/test-001 snapshot copy, 2,236,326 bytes, GZ1 framing) replied {\"impl\":\"delphi\",\"verdict\":\"pass\"} in 10.23 s. Note: hub had ~102 stale gpg-agent processes; the delphi GNUPGHOME was bound to a zombie agent (agent_genkey ENOENT) until they were pkilled — keygen/signing route via /bin/sh -c gpg thereafter."
+}

@@ -1,0 +1,7 @@
+{
+ "id": "awk",
+ "adapter": "ports/awk/adapter",
+ "status": "playing",
+ "kind": "port",
+ "note": "libphext gawk port, 0.6.1 parity; tested on aletheia-core (GNU Awk 5.2.1 system); fixtures 16/16 input.phext byte-identical round-trips, normalize idempotent; adapter contract v2 self-test PASS (keygen/seek/elect/insert-only choose+apply/attest/validate/verify); smoke-001 verify PASS / 30 placements; serve-mode init PASS"
+}

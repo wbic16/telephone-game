@@ -1,0 +1,525 @@
+# game.decl.a68 -- the Exocortical Telephone Game adapter logic #
+# (contract v2), mirroring harness/adapter_base.py and the icon #
+# port's CLI: echo / elect / choose / apply / attest / keygen / #
+# init / validate / verify over this port's own libphext. State #
+# maps are phokenize rows (keys / txts / cmps). PGP goes through #
+# subprocess gpg with the per-port GNUPGHOME. #
+
+STRING impl name := "algol";
+STRING gpg home := "/home/wbic16/telephone-algol/gnupg";
+
+[1:9]INT index coord := (1, 1, 1, 1, 1, 1, 1, 1, 1);
+[1:9]INT keys coord := (1, 1, 1, 1, 1, 1, 1, 1, 2);
+[1:9]INT kh coord := (1, 1, 1, 1, 1, 1, 1, 1, 3);
+
+# serve validate cache (the state as of init / last validate) #
+FLEX [1:0]STRING cachek, cachet;
+FLEX [1:0]INT cachec;
+BOOL cache valid := FALSE;
+
+PROC rows fetch = (REF FLEX []STRING keys, REF FLEX []STRING txts,
+                   []INT coord) STRING:
+BEGIN
+  INT idx := sl find (keys, coord key (coord));
+  STRING r := "";
+  IF idx /= 0 THEN r := txts[idx] FI;
+  r
+END;
+
+# exact small-file writer (no added newline): gpg inputs must be #
+# byte-exact. Only used for small ASCII payloads. #
+PROC write exact = (STRING path, STRING data) VOID:
+BEGIN
+  FILE f;
+  establish (f, path, stand out channel);
+  put (f, data);
+  close (f)
+END;
+
+PROC gpg keygen = INT:
+BEGIN
+  STRING fb := tmp name ("kg");
+  INT rc := system ("GNUPGHOME=" + gpg home +
+    " gpg --batch --yes --list-keys --with-colons > " + fb +
+    " 2>/dev/null");
+  STRING keys := "";
+  IF file exists (fb) THEN keys := read text file (fb) FI;
+  BOOL haspub := FALSE;
+  FOR i FROM 1 TO UPB keys - 2 DO
+    IF keys[i:i + 2] = "pub" THEN haspub := TRUE FI
+  OD;
+  IF NOT haspub THEN
+    rc := system ("GNUPGHOME=" + gpg home +
+      " gpg --batch --yes --pinentry-mode loopback --passphrase ''" +
+      " --quick-generate-key telephone-algol ed25519 sign never" +
+      " 2>/dev/null")
+  FI;
+  rc := system ("GNUPGHOME=" + gpg home +
+    " gpg --batch --yes --armor --export telephone-algol > " + fb +
+    " 2>/dev/null");
+  STRING pub := read text file (fb);
+  system ("rm -f " + fb);
+  INT o := jv obj;
+  jv set (o, "impl", jv str (impl name));
+  jv set (o, "pubkey", jv str (pub));
+  o
+END;
+
+PROC gpg attest = (INT descriptor) INT:
+BEGIN
+  STRING fb := tmp name ("at");
+  write exact (fb, jv canon (descriptor));
+  INT rc := system ("GNUPGHOME=" + gpg home +
+    " gpg --batch --yes --pinentry-mode loopback --passphrase ''" +
+    " --detach-sign --armor -u telephone-algol -o " + fb + ".sig " +
+    fb + " 2>/dev/null");
+  STRING sig := "";
+  IF file exists (fb + ".sig") THEN
+    sig := read text file (fb + ".sig")
+  FI;
+  system ("rm -f " + fb + " " + fb + ".sig");
+  INT o := jv obj;
+  jv set (o, "signature", jv str (sig));
+  o
+END;
+
+PROC verify signature = (STRING pubkeys, STRING data,
+                         STRING sig b64) BOOL:
+BEGIN
+  STRING dir := tmp name ("vf");
+  STRING home := dir + "/gnupg";
+  system ("mkdir -p " + home);
+  system ("chmod 700 " + home);
+  write exact (dir + "/sig.asc", b64 dec (sig b64));
+  write exact (dir + "/data", data);
+  write exact (dir + "/keys", pubkeys);
+  INT rc := system ("GNUPGHOME=" + home +
+    " gpg --batch --yes --import " + dir + "/keys 2>/dev/null" +
+    " && GNUPGHOME=" + home +
+    " gpg --batch --yes --verify " + dir + "/sig.asc " + dir +
+    "/data 2>/dev/null");
+  system ("rm -rf " + dir);
+  rc = 0
+END;
+
+PROC do echo = (INT ping) INT:
+BEGIN
+  INT inner := jv obj;
+  jv set (inner, "impl", jv str (impl name));
+  jv set (inner, "ping", jv clone (ping));
+  INT o := jv obj;
+  jv set (o, "impl", jv str (impl name));
+  jv set (o, "echo", jv str (sha256 hex (jv canon (inner))));
+  o
+END;
+
+PROC do elect = (INT req) INT:
+BEGIN
+  INT cands := jv get (req, "candidates");
+  INT turn node := jv get (req, "turn");
+  STRING turn s := "";
+  IF turn node /= 0 THEN turn s := jsval[turn node] FI;
+  STRING position := jv gets (req, "position");
+  # candidate names in order #
+  INT n := 0;
+  INT c := jfirst[cands];
+  WHILE c /= 0 DO n +:= 1; c := jnext[c] OD;
+  [1:n]STRING names;
+  c := jfirst[cands];
+  FOR i FROM 1 TO n DO
+    names[i] := jsval[c];
+    c := jnext[c]
+  OD;
+  # pool: everyone but self; if that is empty, everyone #
+  [1:n]STRING pool;
+  INT pn := 0;
+  FOR i FROM 1 TO n DO
+    IF names[i] /= impl name THEN
+      pn +:= 1;
+      pool[pn] := names[i]
+    FI
+  OD;
+  IF pn = 0 THEN
+    FOR i FROM 1 TO n DO pool[i] := names[i] OD;
+    pn := n
+  FI;
+  STRING joined := "";
+  FOR i FROM 1 TO n DO
+    IF i > 1 THEN joined +:= "," FI;
+    joined +:= names[i]
+  OD;
+  STRING seed := sha256 hex (impl name + "-elect:" + position +
+                             ":" + turn s + ":" + joined);
+  # (hex seed as integer) MOD pn, computed digit by digit #
+  INT acc := 0;
+  FOR i FROM 1 TO 8 DO
+    CHAR h := seed[i];
+    INT d := 0;
+    IF h >= "0" AND h <= "9" THEN d := ABS h - ABS "0"
+    ELIF h >= "a" AND h <= "f" THEN d := ABS h - ABS "a" + 10
+    ELIF h >= "A" AND h <= "F" THEN d := ABS h - ABS "A" + 10
+    FI;
+    acc := (acc * 16 + d) MOD pn
+  OD;
+  INT o := jv obj;
+  jv set (o, "elect", jv str (pool[acc + 1]));
+  o
+END;
+
+PROC state of = (INT req) STRING:
+  b64 dec (jv gets (req, "state"));
+
+PROC do choose = (INT req) INT:
+BEGIN
+  STRING data := state of (req);
+  FLEX [1:0]STRING k, t;
+  FLEX [1:0]INT c;
+  phokenize (data, k, t, c);
+  INT np;
+  [1:9]INT pos := parse coord (jv gets (req, "position"), np);
+  WHILE rows fetch (k, t, pos) /= "" DO
+    pos[9] +:= 1
+  OD;
+  INT o := jv obj;
+  jv set (o, "op", jv str ("insert"));
+  jv set (o, "coordinate", jv str (coord str (pos)));
+  jv set (o, "text", jv str (impl name + " was here, turn " +
+                             jv gets (req, "turn")));
+  o
+END;
+
+PROC do apply = (INT req) INT:
+BEGIN
+  STRING data := state of (req);
+  INT step := jv get (req, "step");
+  FLEX [1:0]STRING k, t;
+  FLEX [1:0]INT c;
+  phokenize (data, k, t, c);
+  INT np;
+  [1:9]INT coord := parse coord (jv gets (step, "coordinate"), np);
+  IF rows fetch (k, t, coord) /= "" THEN
+    INT e := jv obj;
+    jv set (e, "error", jv str ("coordinate already occupied"));
+    e
+  ELSE
+    sl append (k, t, c, coord, jv gets (step, "text"));
+    STRING out := dephokenize (k, t, c, TRUE);
+    INT o := jv obj;
+    jv set (o, "state_b64", jv str (b64 enc (out)));
+    jv set (o, "state_sha256", jv str (sha256 hex (out)));
+    o
+  FI
+END;
+
+PROC do init = (INT req) INT:
+BEGIN
+  STRING data := state of (req);
+  phokenize (data, cachek, cachet, cachec);
+  cache valid := TRUE;
+  INT o := jv obj;
+  jv set (o, "impl", jv str (impl name));
+  jv set (o, "verdict", jv str ("pass"));
+  o
+END;
+
+PROC vfail = (STRING detail) INT:
+BEGIN
+  INT o := jv obj;
+  jv set (o, "impl", jv str (impl name));
+  jv set (o, "verdict", jv str ("fail"));
+  jv set (o, "detail", jv str (detail));
+  o
+END;
+
+# strip trailing newline characters (adapter_base rstrip of \n) #
+PROC rstrip nl = (STRING s) STRING:
+BEGIN
+  INT n := UPB s;
+  WHILE n > 0 AND s[n] = REPR (10) DO n -:= 1 OD;
+  IF n = UPB s THEN s ELSE s[1:n] FI
+END;
+
+PROC ends with = (STRING big, STRING small) BOOL:
+BEGIN
+  BOOL r := FALSE;
+  IF UPB small = 0 THEN
+    r := TRUE
+  ELIF UPB small <= UPB big THEN
+    r := big[UPB big - UPB small + 1:UPB big] = small
+  FI;
+  r
+END;
+
+PROC do validate = (INT req) INT:
+BEGIN
+  STRING data := state of (req);
+  INT step := jv get (req, "step");
+  FLEX [1:0]STRING nk, nt;
+  FLEX [1:0]INT nc;
+  phokenize (data, nk, nt, nc);
+  INT np;
+  [1:9]INT coord := parse coord (jv gets (step, "coordinate"), np);
+  [1:9]INT ev := parse coord (jv gets (req, "event_coord"), np);
+  STRING placed := rows fetch (nk, nt, coord);
+  IF placed /= jv gets (step, "text") THEN
+    vfail ("placed scroll missing or altered")
+  ELSE
+    INT result := 0;
+    # every prior scroll unchanged (index scroll excepted) #
+    INT i := 1;
+    WHILE i <= UPB cachek AND result = 0 DO
+      [1:9]INT cc := sl coord (cachec, i);
+      IF coord cmp (cc, index coord) /= 0 THEN
+        IF rows fetch (nk, nt, cc) /= cachet[i] THEN
+          result := vfail ("prior scroll overwritten at " +
+                            coord str (cc))
+        FI
+      FI;
+      i +:= 1
+    OD;
+    # no unexpected new scrolls #
+    i := 1;
+    WHILE i <= UPB nk AND result = 0 DO
+      [1:9]INT cc := sl coord (nc, i);
+      IF sl find (cachek, nk[i]) = 0 THEN
+        IF coord cmp (cc, coord) /= 0 AND
+           coord cmp (cc, ev) /= 0 THEN
+          result := vfail ("unexpected new scroll at " +
+                            coord str (cc))
+        FI
+      FI;
+      i +:= 1
+    OD;
+    IF result = 0 THEN
+      STRING idx := rstrip nl (rows fetch (nk, nt, index coord));
+      STRING line := rstrip nl (jv gets (req, "index_line"));
+      IF NOT ends with (idx, line) THEN
+        result := vfail ("index does not record the placement")
+      FI
+    FI;
+    IF result = 0 THEN
+      cachek := nk;
+      cachet := nt;
+      cachec := nc;
+      INT o := jv obj;
+      jv set (o, "impl", jv str (impl name));
+      jv set (o, "verdict", jv str ("pass"));
+      result := o
+    FI;
+    result
+  FI
+END;
+
+PROC vfail n = (INT n, STRING msg) INT:
+BEGIN
+  INT ff := jv obj;
+  jv set (ff, "detail", jv str (msg));
+  INT o := jv obj;
+  jv set (o, "impl", jv str (impl name));
+  jv set (o, "verdict", jv str ("fail"));
+  jv set (o, "placements_checked", jv num (n));
+  jv set (o, "first_failure", ff);
+  o
+END;
+
+PROC do verify = (INT req) INT:
+BEGIN
+  STRING data := state of (req);
+  FLEX [1:0]STRING k, t;
+  FLEX [1:0]INT c;
+  phokenize (data, k, t, c);
+  STRING keys text := rows fetch (k, t, keys coord);
+  STRING kh := rows fetch (k, t, kh coord);
+  # trim whitespace both ends of the keys-hash scroll #
+  INT a := 1, b := UPB kh;
+  WHILE a <= b AND (kh[a] = " " OR kh[a] = REPR (10) OR
+        kh[a] = REPR (13) OR kh[a] = REPR (9)) DO a +:= 1 OD;
+  WHILE b >= a AND (kh[b] = " " OR kh[b] = REPR (10) OR
+        kh[b] = REPR (13) OR kh[b] = REPR (9)) DO b -:= 1 OD;
+  STRING kh t := IF b >= a THEN kh[a:b] ELSE "" FI;
+  IF sha256 hex (keys text) /= kh t THEN
+    vfail n (0, "keys-hash scroll does not match keys")
+  ELSE
+    # placements store: coord key -> text_sha256 #
+    FLEX [1:0]STRING pk, pt;
+    FLEX [1:0]INT pc;
+    INT nplaced := 0;
+    STRING prev hash := "";
+    BOOL have prev := FALSE;
+    INT expect := 1;
+    INT result := 0;
+    INT i := 1;
+    # state rows are coordinate-ordered, so event scrolls (prefix #
+    # 1.1.1/1.1.1/1.1.2.1) are visited in seq order #
+    WHILE i <= UPB k AND result = 0 DO
+      [1:9]INT cc := sl coord (c, i);
+      BOOL is event := TRUE;
+      FOR d FROM 1 TO 8 DO
+        INT want := IF d = 7 THEN 2 ELSE 1 FI;
+        IF cc[d] /= want THEN is event := FALSE FI
+      OD;
+      IF is event THEN
+        INT seq := cc[9];
+        IF seq /= expect THEN
+          result := vfail n (nplaced,
+                             "event seq gap at " + whole (seq, 0))
+        ELSE
+          INT ev := jv parse (t[i]);
+          INT body := jv get (ev, "body");
+          INT prev node := jv get (ev, "prev");
+          BOOL prev ok;
+          IF NOT have prev THEN
+            prev ok := jkind[prev node] = 0
+          ELIF jkind[prev node] = 3 THEN
+            prev ok := jsval[prev node] = prev hash
+          ELSE
+            prev ok := FALSE
+          FI;
+          IF NOT prev ok THEN
+            result := vfail n (nplaced,
+              "event chain broken at seq " + whole (seq, 0))
+          ELSE
+            prev hash := sha256 hex (jv canon (body));
+            have prev := TRUE;
+            IF jv gets (body, "type") = "placement" THEN
+              STRING cs := jv gets (body, "coord");
+              INT np;
+              [1:9]INT pcoord := parse coord (cs, np);
+              IF sl find (pk, coord key (pcoord)) /= 0 THEN
+                result := vfail n (nplaced,
+                  "coordinate reused at seq " + whole (seq, 0))
+              ELSE
+                STRING txt := rows fetch (k, t, pcoord);
+                STRING want hash := jv gets (body, "text_sha256");
+                IF txt = "" OR sha256 hex (txt) /= want hash THEN
+                  result := vfail n (nplaced,
+                    "placement scroll hash mismatch seq " +
+                    whole (seq, 0))
+                ELSE
+                  INT desc := jv obj;
+                  jv set (desc, "turn", jv clone (jv get (body, "turn")));
+                  jv set (desc, "coordinate", jv str (cs));
+                  jv set (desc, "scroll_sha256",
+                          jv str (want hash));
+                  jv set (desc, "file_sha256",
+                          jv str (jv gets (body, "file_sha256")));
+                  IF NOT verify signature (keys text,
+                       jv canon (desc), jv gets (body, "att")) THEN
+                    result := vfail n (nplaced,
+                      "attestation fails at seq " + whole (seq, 0))
+                  ELSE
+                    sl append (pk, pt, pc, pcoord, want hash);
+                    nplaced +:= 1
+                  FI
+                FI
+              FI
+            FI;
+            expect +:= 1
+          FI
+        FI
+      FI;
+      i +:= 1
+    OD;
+    IF result /= 0 THEN
+      result
+    ELSE
+      # index cross-check #
+      STRING idx text := rows fetch (k, t, index coord);
+      INT lines := 0;
+      INT pos := 1, n := UPB idx text;
+      INT result2 := 0;
+      WHILE pos <= n AND result2 = 0 DO
+        INT eol := pos;
+        WHILE eol <= n AND idx text[eol] /= REPR (10) DO
+          eol +:= 1
+        OD;
+        STRING ln := idx text[pos:eol - 1];
+        pos := eol + 1;
+        IF UPB ln > 0 AND ln[1] /= "#" THEN
+          lines +:= 1;
+          # split at the first three spaces #
+          INT s1 := 0, s2 := 0, s3 := 0;
+          FOR q FROM 1 TO UPB ln DO
+            IF ln[q] = " " THEN
+              IF s1 = 0 THEN s1 := q
+              ELIF s2 = 0 THEN s2 := q
+              ELIF s3 = 0 THEN s3 := q
+              FI
+            FI
+          OD;
+          IF s2 = 0 OR s3 = 0 THEN
+            INT hend := UPB ln;
+            IF hend > 40 THEN hend := 40 FI;
+            result2 := vfail n (nplaced, "index hash mismatch: " +
+                                ln[1:hend])
+          ELSE
+            STRING cs := ln[s1 + 1:s2 - 1];
+            STRING h := ln[s2 + 1:s3 - 1];
+            INT np;
+            [1:9]INT pcoord := parse coord (cs, np);
+            INT pidx := sl find (pk, coord key (pcoord));
+            IF pidx = 0 OR pt[pidx] /= h THEN
+              INT hend := UPB ln;
+              IF hend > 40 THEN hend := 40 FI;
+              result2 := vfail n (nplaced,
+                                 "index hash mismatch: " + ln[1:hend])
+            FI
+          FI
+        FI
+      OD;
+      IF result2 /= 0 THEN
+        result2
+      ELIF lines /= nplaced THEN
+        vfail n (nplaced, "index lines != placements")
+      ELSE
+        INT ff := jv null;
+        INT o := jv obj;
+        jv set (o, "impl", jv str (impl name));
+        jv set (o, "verdict", jv str ("pass"));
+        jv set (o, "placements_checked", jv num (nplaced));
+        jv set (o, "first_failure", ff);
+        o
+      FI
+    FI
+  FI
+END;
+
+PROC dispatch = (INT req) INT:
+BEGIN
+  STRING cmd := jv gets (req, "cmd");
+  INT r := 0;
+  IF cmd = "id" THEN
+    INT o := jv obj;
+    jv set (o, "impl", jv str (impl name));
+    r := o
+  ELIF cmd = "keygen" THEN r := gpg keygen
+  ELIF cmd = "echo" THEN r := do echo (jv get (req, "ping"))
+  ELIF cmd = "elect" THEN r := do elect (req)
+  ELIF cmd = "choose" THEN r := do choose (req)
+  ELIF cmd = "apply" THEN r := do apply (req)
+  ELIF cmd = "attest" THEN r := gpg attest (jv get (req, "descriptor"))
+  ELIF cmd = "init" THEN r := do init (req)
+  ELIF cmd = "validate" THEN r := do validate (req)
+  ELIF cmd = "verify" THEN r := do verify (req)
+  ELSE
+    INT o := jv obj;
+    jv set (o, "error", jv str ("unknown cmd " + cmd));
+    r := o
+  FI;
+  r
+END;
+
+PROC handle line = (STRING line) STRING:
+BEGIN
+  STRING raw := line;
+  IF UPB raw >= 4 AND raw[1:4] = "GZ1:" THEN
+    raw := gunzip bytes (b64 dec (raw[5:UPB raw]))
+  FI;
+  INT req := jv parse (raw);
+  STRING out := jv write (dispatch (req));
+  IF UPB out > 8192 THEN
+    "GZ1:" + b64 enc (gzip bytes (out))
+  ELSE
+    out
+  FI
+END;

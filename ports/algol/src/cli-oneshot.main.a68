@@ -1,0 +1,10 @@
+# cli-oneshot.main.a68 -- one-shot entry: one JSON request line #
+# on stdin (the local adapter terminates it with a newline), one #
+# JSON response line on stdout. #
+STRING line := "";
+BOOL one eof := FALSE;
+on file end (stand in, (REF FILE dummy) BOOL: (one eof := TRUE; TRUE));
+get (stand in, (line, newline));
+IF UPB line > 0 THEN
+  put (stand out, (handle line (line), newline))
+FI

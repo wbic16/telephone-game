@@ -140,6 +140,130 @@ class Serve:
             self.p.kill()
 
 
+# ------------------------------------------------------- spawn transport
+# Serve spawns are staggered, and init is retried on transport failure
+# only: an unstaggered mass spawn of hub serves can lose SSH
+# connections during banner exchange under load (see
+# harness/serve-conformance.md, Part B rehearsal — echo legs died with
+# "Connection timed out during banner exchange", victims varying by
+# run). This changes only how serves are started: no game timing,
+# timeout, or rule changes — init still uses Serve.call's 30 s
+# default, and a serve that keeps failing transport after the bounded
+# retries fails loudly, by adapter id, on the last failure.
+SPAWN_STAGGER_S = 0.25
+INIT_ATTEMPTS = 3
+INIT_BACKOFF_S = 2.0
+
+
+def spawn_serves(players):
+    """Spawn every player's serve, staggered by SPAWN_STAGGER_S."""
+    serves = {}
+    for e in players:
+        if serves:
+            time.sleep(SPAWN_STAGGER_S)
+        serves[e["id"]] = Serve(e)
+    return serves
+
+
+def init_serve(serves, entry, state_path):
+    """Init one serve, respawning it on transport failure only.
+
+    A transport failure is a serve that died, a call that times out,
+    or one that never gets a first response (e.g. its SSH connection
+    died during banner exchange). An error verdict from a live serve
+    is a genuine adapter answer and propagates immediately, unretried.
+    After INIT_ATTEMPTS attempts the last failure is re-raised, so a
+    genuinely dead adapter still fails loudly, naming its id.
+    """
+    eid = entry["id"]
+    for attempt in range(1, INIT_ATTEMPTS + 1):
+        s = serves[eid]
+        try:
+            return s.call({"cmd": "init", "state_path": state_path})
+        except (TimeoutError, RuntimeError) as exc:
+            transport = isinstance(exc, TimeoutError) or \
+                s.p.poll() is not None or "adapter died" in str(exc)
+            if not transport or attempt == INIT_ATTEMPTS:
+                raise
+            s.close()
+            time.sleep(INIT_BACKOFF_S * attempt)
+            serves[eid] = Serve(entry)
+
+
+# ------------------------------------------------- per-turn transport
+# Round-2 hardening: the per-turn validate and echo calls get the
+# same bounded transport retry as init (round 1 covered init only;
+# test-001 died a third time when a validate leg timed out under
+# live hub contention — delphi's solo validate is 17.28 s against
+# the 60 s timeout, so a contended timeout is a transport event,
+# not an adapter verdict). On a transport failure ONLY — the call
+# timed out, the pipe broke / hit EOF, or the serve process exited
+# — the serve is closed, respawned, re-inited with the CURRENT
+# game file via init_serve, and the same call is re-issued, up to
+# TURN_ATTEMPTS attempts total with the init backoff style. A
+# returned verdict — pass OR fail — is a genuine adapter answer:
+# it is never retried and propagates exactly as before, so a
+# consensus FAIL can never be retried into anything else. An
+# error verdict from a live serve (Serve.call's RuntimeError for
+# an "error" reply, process still running) likewise propagates
+# unretried. On exhaustion the FIRST failure is re-raised
+# (fail-closed, resumable), naming the adapter.
+#
+# Deliberately NOT covered: elect, choose, apply, attest. Those
+# stay fail-closed on first transport failure, as before. choose /
+# apply / attest are the holder's mutation leg — choose proposes
+# the move, apply materialises the successor state, attest signs
+# it — and whether re-issuing them after an ambiguous transport
+# death (the request may or may not have been acted on before the
+# pipe died) is safe has not been established; a duplicated or
+# divergent mutation leg is a worse failure than a resumable
+# death. elect is likewise left as-is in this change. Retry is
+# extended only where the call is a read-only question about a
+# file the driver already holds (echo of a ping, validate of the
+# inscribed file) and re-asking it cannot change game state.
+TURN_ATTEMPTS = 3
+TURN_BACKOFF_S = INIT_BACKOFF_S
+
+
+def _is_transport(exc, serve):
+    """True only for transport death, never for an adapter answer."""
+    if isinstance(exc, TimeoutError):
+        return True
+    if isinstance(exc, (BrokenPipeError, ConnectionError, EOFError,
+                        OSError)):
+        return True
+    if isinstance(exc, RuntimeError):
+        return serve.p.poll() is not None or \
+            "adapter died" in str(exc)
+    return False
+
+
+def call_with_retry(serves, entry, state_path, req, timeout):
+    """Issue one read-only per-turn call (echo / validate) with a
+    bounded transport retry: respawn + re-init on the current game
+    file (state_path) between attempts. See the section comment
+    above for scope and for why choose/apply/attest are excluded.
+    """
+    eid = entry["id"]
+    first_exc = None
+    for attempt in range(1, TURN_ATTEMPTS + 1):
+        s = serves[eid]
+        try:
+            return s.call(req, timeout=timeout)
+        except (TimeoutError, RuntimeError, BrokenPipeError,
+                ConnectionError, EOFError, OSError) as exc:
+            if not _is_transport(exc, s):
+                raise
+            if first_exc is None:
+                first_exc = exc
+            if attempt == TURN_ATTEMPTS:
+                raise first_exc
+            s.close()
+            time.sleep(TURN_BACKOFF_S * attempt)
+            serves[eid] = Serve(entry)
+            init_serve(serves, entry, state_path)
+
+
 # ---------------------------------------------------------------- game state
 class Game:
     def __init__(self, name):
@@ -263,10 +387,10 @@ def cmd_new(args):
         "players": game.state["players"], "target": args.target})
     game.save(data)
     # every node self-validates the starting file
-    serves = {e["id"]: Serve(e) for e in players}
+    serves = spawn_serves(players)
     try:
         for e in players:
-            serves[e["id"]].call({"cmd": "init", "state_path": game.file})
+            init_serve(serves, e, game.file)
     finally:
         for s in serves.values():
             s.close()
@@ -294,7 +418,7 @@ def cmd_play(args):
     game = Game(args.game)
     if not game.state or game.state["status"] != "running":
         sys.exit("game %s is not running" % args.game)
-    serves = {e["id"]: Serve(e) for e in players}
+    serves = spawn_serves(players)
     data = game.load_file()
     # reconcile the cached driver state from stress.phext itself —
     # the file is the ground truth, never the cache
@@ -323,7 +447,7 @@ def cmd_play(args):
     game.state["pending_echoes"] = []
     game.state.pop("last_consensus", None)
     for e in players:  # re-init validator caches on resume
-        serves[e["id"]].call({"cmd": "init", "state_path": game.file})
+        init_serve(serves, e, game.file)
     last_echo = 0.0
     steps = 0
     try:
@@ -339,7 +463,9 @@ def cmd_play(args):
                         "round": game.state["placements"] + 1,
                         "nonce": sha256(data)}
                 game.state["pending_echoes"] = [
-                    serves[e["id"]].call({"cmd": "echo", "ping": ping})
+                    call_with_retry(serves, e, game.file,
+                                    {"cmd": "echo", "ping": ping},
+                                    timeout=30)
                     for e in players]
                 last_echo = time.monotonic()
             holder = game.state["holder"]
@@ -354,7 +480,11 @@ def cmd_play(args):
                  "turn": turn, "placements": counts}, timeout=15)
             elect = el["elect"]
             # the elect must respond within 15 seconds, or the prior
-            # ends the test with failure
+            # ends the test with failure. NOTE: elect/choose/apply/
+            # attest intentionally do NOT use call_with_retry — they
+            # are the holder-mutation leg and stay fail-closed on
+            # first transport failure (see the per-turn transport
+            # section comment above init/Serve helpers).
             t0 = time.monotonic()
             try:
                 step = serves[elect].call(
@@ -429,7 +559,8 @@ def cmd_play(args):
             # consensus: every node self-validates the file at this step
             verdicts = {}
             for e in players:
-                v = serves[e["id"]].call(
+                v = call_with_retry(
+                    serves, e, game.file,
                     {"cmd": "validate", "state_path": game.file,
                      "step": step, "event_coord": ev_coord,
                      "index_line": line}, timeout=60)
@@ -451,7 +582,7 @@ def cmd_play(args):
     finally:
         for s in serves.values():
             s.close()
-    end_test(game, data, {e["id"]: Serve(e) for e in players}, "success",
+    end_test(game, data, spawn_serves(players), "success",
              "reached %d scroll placements across the network"
              % game.state["target"])
 

@@ -1,0 +1,7 @@
+{
+ "adapter": "ports/rexx/adapter",
+ "id": "rexx",
+ "kind": "port",
+ "note": "libphext-rexx: Regina REXX 3.9.5 on aletheia-core (user-level deb extraction, LD_LIBRARY_PATH via ~/telephone-rexx/bin/run-telephone). 0.6.1 parity: buffer API + DynamicPhext (CLRS quarter-full dynamic array) + TransitivePhext (stem branching map), remove coordinate-preserving. Suite green on hub (unit + store equivalence + fixtures 16/16 byte-identical round-trips incl. the 9.4 MB real-corpora chain, normalize idempotent). Adapter contract v2 self-test PASS (id/echo/elect/keygen/seek/choose+apply/validate prior+driver forms/attest/verify). Smoke-001 one-shot verify PASS, 30 placements. Game scale on a snapshot of live test-001 (1004 placements, 2260772 bytes): serve init 0.06 s (deferred cache), choose 10.01 s, apply 11.45 s, driver-form validate 20.19 s PASS. Regina quirks handled: PROCEDURE EXPOSE is one-generation (all globals exposed at every level), whitespace-only scroll text compares equal to '' under = so emptiness uses ==, substr pads short final blocks (block scan requests only remaining bytes), host-command paths concatenated with || (juxtaposition inserts a blank).",
+ "status": "playing"
+}

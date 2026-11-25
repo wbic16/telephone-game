@@ -1,0 +1,619 @@
+# libphext-algol -- an Algol 68 (Algol 68 Genie) port of libphext #
+# (0.6.1 parity). Declaration fragment: meant to be concatenated #
+# inside a BEGIN ... END program by the build (see hub/build.sh). #
+
+# Semantics normative from libphext-py: a phext is a byte buffer; #
+# nine dimension-break bytes walk a 9-component coordinate; scroll #
+# text is a maximal run of non-break bytes (newline 0x0A is ordinary #
+# text). Buffers are STRINGs (a68g CHARs carry bytes 0-255 in #
+# memory); coordinates are [1:9]INT; string form a.b.c/d.e.f/g.h.i. #
+
+# A scroll list ("SLT") is three parallel flex rows: keys (fixed- #
+# width padded coordinate keys; lexicographic order == coordinate #
+# order), texts, and flat components (9 per scroll). Procedures take #
+# the rows as REF FLEX params and reseat them. #
+
+# REMOVE IS COORDINATE-PRESERVING: remove replaces a scroll with "" #
+# and normalizes -- the removed coordinate reads "" afterwards and #
+# its neighbours keep their coordinates (a gap, never renumbering). #
+
+[]INT breakbyte = (1, 31, 30, 29, 28, 26, 25, 24, 23);
+
+PROC idiv = (INT a, INT b) INT: ENTIER (a / b);
+
+PROC pad12 = (INT v) STRING:
+BEGIN
+  STRING s := whole (v, 0);
+  WHILE UPB s < 12 DO s := "0" + s OD;
+  s
+END;
+
+PROC coord key = ([]INT c) STRING:
+BEGIN
+  STRING k := "";
+  FOR d FROM 1 TO 9 DO k +:= pad12 (c[d]) OD;
+  k
+END;
+
+PROC coord str = ([]INT c) STRING:
+  whole (c[1], 0) + "." + whole (c[2], 0) + "." + whole (c[3], 0) + "/" +
+  whole (c[4], 0) + "." + whole (c[5], 0) + "." + whole (c[6], 0) + "/" +
+  whole (c[7], 0) + "." + whole (c[8], 0) + "." + whole (c[9], 0);
+
+PROC parse coord = (STRING s, REF INT nout) []INT:
+BEGIN
+  [1:9]INT out;
+  FOR d FROM 1 TO 9 DO out[d] := 1 OD;
+  INT n := 0, cur := 0;
+  BOOL innum := FALSE;
+  FOR i FROM 1 TO UPB s DO
+    CHAR ch := s[i];
+    IF ch >= "0" AND ch <= "9" THEN
+      cur := cur * 10 + (ABS ch - ABS "0");
+      innum := TRUE
+    ELIF innum THEN
+      n +:= 1;
+      IF n <= 9 THEN out[n] := cur FI;
+      cur := 0;
+      innum := FALSE
+    FI
+  OD;
+  IF innum THEN
+    n +:= 1;
+    IF n <= 9 THEN out[n] := cur FI
+  FI;
+  nout := n;
+  out
+END;
+
+PROC coord valid = ([]INT c, INT n) BOOL:
+BEGIN
+  BOOL ok := n = 9;
+  FOR d FROM 1 TO 9 DO IF c[d] < 1 THEN ok := FALSE FI OD;
+  ok
+END;
+
+PROC coord cmp = ([]INT a, []INT b) INT:
+BEGIN
+  INT r := 0;
+  FOR d FROM 1 TO 9 DO
+    IF r = 0 THEN
+      IF a[d] < b[d] THEN r := -1 ELIF a[d] > b[d] THEN r := 1 FI
+    FI
+  OD;
+  r
+END;
+
+PROC sl coord = (REF FLEX []INT cmps, INT i) []INT:
+BEGIN
+  [1:9]INT c;
+  FOR d FROM 1 TO 9 DO c[d] := cmps[(i - 1) * 9 + d] OD;
+  c
+END;
+
+PROC sl append = (REF FLEX []STRING keys, REF FLEX []STRING txts,
+                  REF FLEX []INT cmps, []INT coord, STRING text) VOID:
+BEGIN
+  INT n := UPB keys;
+  [1:n + 1]STRING nk;
+  [1:n + 1]STRING nt;
+  [1:(n + 1) * 9]INT nc;
+  IF n > 0 THEN
+    nk[1:n] := keys;
+    nt[1:n] := txts;
+    nc[1:n * 9] := cmps
+  FI;
+  nk[n + 1] := coord key (coord);
+  nt[n + 1] := text;
+  FOR d FROM 1 TO 9 DO nc[n * 9 + d] := coord[d] OD;
+  keys := nk;
+  txts := nt;
+  cmps := nc
+END;
+
+# binary search over a sorted SLT; returns index or 0 #
+PROC sl find = (REF FLEX []STRING keys, STRING k) INT:
+BEGIN
+  INT lo := 1, hi := UPB keys, found := 0;
+  WHILE lo <= hi AND found = 0 DO
+    INT mid := idiv (lo + hi, 2);
+    IF keys[mid] = k THEN found := mid
+    ELIF keys[mid] < k THEN lo := mid + 1
+    ELSE hi := mid - 1
+    FI
+  OD;
+  found
+END;
+
+# byte -> dimension (1..9) or 0 for text bytes; built once #
+[0:255]INT breakdim;
+BOOL breakdim ready := FALSE;
+
+PROC breakdim init = VOID:
+BEGIN
+  FOR i FROM 0 TO 255 DO breakdim[i] := 0 OD;
+  FOR d FROM 1 TO 9 DO breakdim[breakbyte[d]] := d OD;
+  breakdim ready := TRUE
+END;
+
+PROC phokenize = (STRING buf, REF FLEX []STRING keys,
+                  REF FLEX []STRING txts, REF FLEX []INT cmps) VOID:
+BEGIN
+  IF NOT breakdim ready THEN breakdim init FI;
+  # two passes over the buffer: count scrolls, then fill rows #
+  # allocated at the exact size. (Row growth by flex reseat is #
+  # unreliable at corpus scale in this build, and per-scroll #
+  # append rebuilds are quadratic.) #
+  INT n := UPB buf;
+  INT cnt := 0;
+  INT runstart := 1;
+  FOR i FROM 1 TO n DO
+    IF breakdim[ABS buf[i]] > 0 THEN
+      IF i > runstart THEN cnt +:= 1 FI;
+      runstart := i + 1
+    FI
+  OD;
+  IF runstart <= n THEN cnt +:= 1 FI;
+  [1:cnt]STRING fk;
+  [1:cnt]STRING ft;
+  [1:cnt * 9]INT fc;
+  [1:9]INT coord;
+  FOR d FROM 1 TO 9 DO coord[d] := 1 OD;
+  cnt := 0;
+  runstart := 1;
+  FOR i FROM 1 TO n DO
+    INT dim := breakdim[ABS buf[i]];
+    IF dim > 0 THEN
+      IF i > runstart THEN
+        cnt +:= 1;
+        fk[cnt] := coord key (coord);
+        ft[cnt] := buf[runstart:i - 1];
+        FOR d FROM 1 TO 9 DO fc[(cnt - 1) * 9 + d] := coord[d] OD
+      FI;
+      coord[dim] +:= 1;
+      FOR j FROM dim + 1 TO 9 DO coord[j] := 1 OD;
+      runstart := i + 1
+    FI
+  OD;
+  IF runstart <= n THEN
+    cnt +:= 1;
+    fk[cnt] := coord key (coord);
+    ft[cnt] := buf[runstart:n];
+    FOR d FROM 1 TO 9 DO fc[(cnt - 1) * 9 + d] := coord[d] OD
+  FI;
+  keys := fk;
+  txts := ft;
+  cmps := fc
+END;
+
+# repeated character by doubling -- O(n log n), never per-char append #
+PROC rep char = (INT code, INT count) STRING:
+BEGIN
+  STRING s := "";
+  IF count > 0 THEN
+    s := REPR (code);
+    WHILE UPB s < count DO s := s + s OD;
+    IF UPB s > count THEN s := s[1:count] FI
+  FI;
+  s
+END;
+
+# dephokenize of an SLT; sorted = merge-sort by key first, #
+# otherwise the rows are emitted in their given order #
+PROC dephokenize = (REF FLEX []STRING keys, REF FLEX []STRING txts,
+                    REF FLEX []INT cmps, BOOL sorted) STRING:
+BEGIN
+  INT n := UPB keys;
+  [1:n]INT idx;
+  FOR i FROM 1 TO n DO idx[i] := i OD;
+  IF sorted THEN
+    # bottom-up merge sort of idx by key (insertion sort is #
+    # quadratic on adversarial key orders) #
+    [1:n]INT aux;
+    INT width := 1;
+    WHILE width < n DO
+      INT lo := 1;
+      WHILE lo <= n DO
+        INT mid := lo + width - 1;
+        IF mid > n THEN mid := n FI;
+        INT hi := lo + 2 * width - 1;
+        IF hi > n THEN hi := n FI;
+        IF mid > hi THEN mid := hi FI;
+        INT a := lo, b := mid + 1, k := lo;
+        WHILE a <= mid AND b <= hi DO
+          IF keys[idx[a]] <= keys[idx[b]] THEN
+            aux[k] := idx[a];
+            a +:= 1
+          ELSE
+            aux[k] := idx[b];
+            b +:= 1
+          FI;
+          k +:= 1
+        OD;
+        WHILE a <= mid DO
+          aux[k] := idx[a];
+          a +:= 1;
+          k +:= 1
+        OD;
+        WHILE b <= hi DO
+          aux[k] := idx[b];
+          b +:= 1;
+          k +:= 1
+        OD;
+        lo +:= 2 * width
+      OD;
+      FOR i FROM 1 TO n DO idx[i] := aux[i] OD;
+      width *:= 2
+    OD
+  FI;
+  STRING out := "", chunk := "";
+  [1:9]INT loc;
+  FOR d FROM 1 TO 9 DO loc[d] := 1 OD;
+  FOR ii FROM 1 TO n DO
+    INT i := idx[ii];
+    IF UPB txts[i] > 0 THEN
+      [1:9]INT tgt := sl coord (cmps, i);
+      IF coord cmp (loc, tgt) < 0 THEN
+        INT dim := 1;
+        WHILE loc[dim] = tgt[dim] DO dim +:= 1 OD;
+        chunk +:= rep char (breakbyte[dim], tgt[dim] - loc[dim]);
+        loc[dim] := tgt[dim];
+        FOR j FROM dim + 1 TO 9 DO
+          IF tgt[j] > 1 THEN
+            chunk +:= rep char (breakbyte[j], tgt[j] - 1)
+          FI;
+          loc[j] := tgt[j]
+        OD
+      FI;
+      chunk +:= txts[i];
+      IF UPB chunk > 65536 THEN
+        out +:= chunk;
+        chunk := ""
+      FI
+    FI
+  OD;
+  out +:= chunk;
+  out
+END;
+
+PROC normalize = (STRING buf) STRING:
+BEGIN
+  FLEX [1:0]STRING k, t;
+  FLEX [1:0]INT c;
+  phokenize (buf, k, t, c);
+  dephokenize (k, t, c, TRUE)
+END;
+
+PROC phext fetch = (STRING buf, []INT coord) STRING:
+BEGIN
+  FLEX [1:0]STRING k, t;
+  FLEX [1:0]INT c;
+  phokenize (buf, k, t, c);
+  INT i := sl find (k, coord key (coord));
+  STRING r := "";
+  IF i > 0 THEN r := t[i] FI;
+  r
+END;
+
+PROC phext update = (STRING buf, []INT coord, STRING scroll,
+                     BOOL overwrite) STRING:
+BEGIN
+  FLEX [1:0]STRING k, t;
+  FLEX [1:0]INT c;
+  phokenize (buf, k, t, c);
+  FLEX [1:0]STRING nk, nt;
+  FLEX [1:0]INT nc;
+  BOOL appended := FALSE;
+  STRING ck := coord key (coord);
+  FOR i FROM 1 TO UPB k DO
+    INT cmp := IF k[i] < ck THEN -1 ELIF k[i] > ck THEN 1 ELSE 0 FI;
+    IF cmp > 0 AND NOT appended THEN
+      sl append (nk, nt, nc, coord, scroll);
+      appended := TRUE;
+      sl append (nk, nt, nc, sl coord (c, i), t[i])
+    ELIF cmp = 0 AND NOT appended THEN
+      sl append (nk, nt, nc, coord,
+                 IF overwrite THEN scroll ELSE t[i] + scroll FI);
+      appended := TRUE
+    ELSE
+      sl append (nk, nt, nc, sl coord (c, i), t[i])
+    FI
+  OD;
+  IF NOT appended THEN
+    sl append (nk, nt, nc, coord, scroll)
+  FI;
+  dephokenize (nk, nt, nc, FALSE)
+END;
+
+# insert: existing text is prepended to the inserted text. #
+PROC phext insert = (STRING buf, []INT coord, STRING scroll) STRING:
+  phext update (buf, coord, scroll, FALSE);
+
+PROC phext replace = (STRING buf, []INT coord, STRING scroll) STRING:
+  phext update (buf, coord, scroll, TRUE);
+
+# remove: replace with "" then normalize -- coordinate-preserving: #
+# the removed coordinate reads "" and neighbours do not shift. #
+PROC phext remove = (STRING buf, []INT coord) STRING:
+  normalize (phext update (buf, coord, "", TRUE));
+
+# == #
+# DynamicPhext: capacity-managed dynamic array scroll store. #
+# Start at capacity 1, double when full on append, shrink only at #
+# quarter load (never half -- that thrashes). Single instance, #
+# held in globals (Algol 68 has no generic containers); semantics #
+# mirror phext.dynamic exactly. #
+FLEX [1:0]STRING dynk, dynt;
+FLEX [1:0]INT dync;
+INT dyncap, dynrc, dynec, dyndiv;
+
+PROC dyn len = INT: UPB dynk;
+
+PROC dyn resize = (INT newcap) VOID:
+BEGIN
+  dynrc +:= 1;
+  dynec +:= UPB dynk;
+  dyncap := newcap
+END;
+
+PROC dyn grow = VOID:
+BEGIN
+  IF UPB dynk = dyncap THEN dyn resize (2 * dyncap) FI
+END;
+
+PROC dyn shrink = VOID:
+BEGIN
+  IF dyncap > 1 AND UPB dynk <= idiv (dyncap, dyndiv) THEN
+    dyn resize (IF idiv (dyncap, 2) < 1 THEN 1 ELSE idiv (dyncap, 2) FI)
+  FI
+END;
+
+PROC dyn init = (STRING buf, INT divisor) VOID:
+BEGIN
+  dyndiv := divisor;
+  dyncap := 1;
+  dynrc := 0;
+  dynec := 0;
+  [1:0]STRING ek, et;
+  [1:0]INT ec;
+  dynk := ek;
+  dynt := et;
+  dync := ec;
+  IF UPB buf > 0 THEN
+    FLEX [1:0]STRING k, t;
+    FLEX [1:0]INT c;
+    phokenize (buf, k, t, c);
+    FOR i FROM 1 TO UPB k DO
+      dyn grow;
+      sl append (dynk, dynt, dync, sl coord (c, i), t[i])
+    OD
+  FI
+END;
+
+PROC dyn serialize = STRING: dephokenize (dynk, dynt, dync, FALSE);
+
+PROC dyn find = ([]INT coord, REF BOOL found) INT:
+BEGIN
+  INT lo := 1, hi := UPB dynk + 1;
+  STRING ck := coord key (coord);
+  found := FALSE;
+  WHILE lo < hi DO
+    INT mid := idiv (lo + hi, 2);
+    IF dynk[mid] < ck THEN lo := mid + 1
+    ELIF dynk[mid] > ck THEN hi := mid
+    ELSE lo := mid; hi := mid; found := TRUE
+    FI
+  OD;
+  lo
+END;
+
+PROC dyn fetch = ([]INT coord) STRING:
+BEGIN
+  BOOL f;
+  INT i := dyn find (coord, f);
+  STRING r := "";
+  IF f THEN r := dynt[i] FI;
+  r
+END;
+
+PROC dyn remove at = (INT idx) VOID:
+BEGIN
+  FLEX [1:0]STRING nk, nt;
+  FLEX [1:0]INT nc;
+  FOR i FROM 1 TO UPB dynk DO
+    IF i /= idx THEN
+      sl append (nk, nt, nc, sl coord (dync, i), dynt[i])
+    FI
+  OD;
+  dynk := nk;
+  dynt := nt;
+  dync := nc;
+  dyn shrink
+END;
+
+PROC dyn update = ([]INT coord, STRING text, BOOL overwrite) VOID:
+BEGIN
+  BOOL f;
+  INT idx := dyn find (coord, f);
+  IF f THEN
+    IF UPB text = 0 THEN
+      IF overwrite THEN dyn remove at (idx) FI
+    ELIF overwrite THEN
+      dynt[idx] := text
+    ELSE
+      dynt[idx] := dynt[idx] + text
+    FI
+  ELIF UPB text > 0 THEN
+    dyn grow;
+    FLEX [1:0]STRING nk, nt;
+    FLEX [1:0]INT nc;
+    FOR i FROM 1 TO UPB dynk DO
+      IF i = idx THEN
+        sl append (nk, nt, nc, coord, text)
+      FI;
+      sl append (nk, nt, nc, sl coord (dync, i), dynt[i])
+    OD;
+    IF idx = UPB dynk + 1 THEN
+      sl append (nk, nt, nc, coord, text)
+    FI;
+    dynk := nk;
+    dynt := nt;
+    dync := nc
+  FI
+END;
+
+PROC dyn insert = ([]INT coord, STRING text) VOID:
+  dyn update (coord, text, FALSE);
+
+PROC dyn replace = ([]INT coord, STRING text) VOID:
+  dyn update (coord, text, TRUE);
+
+PROC dyn remove = ([]INT coord) VOID:
+BEGIN
+  BOOL f;
+  INT idx := dyn find (coord, f);
+  IF f THEN dyn remove at (idx) FI
+END;
+
+PROC dyn append = ([]INT coord, STRING text) VOID:
+BEGIN
+  INT n := UPB dynk;
+  IF n > 0 THEN
+    IF coord cmp (coord, sl coord (dync, n)) <= 0 THEN
+      print (("dyn append: coordinate not past tail", newline))
+    FI
+  FI;
+  IF UPB text > 0 THEN
+    dyn grow;
+    sl append (dynk, dynt, dync, coord, text)
+  FI
+END;
+
+# == #
+# TransitivePhext: a persistent-semantics scroll store. The #
+# Python original is a functional BranchingMap (path-copying #
+# tree); a68g 3.14's REF identity tests (IS NIL / ISNT NIL) are #
+# unreliable in this build (verified empirically: a name set to #
+# NIL does not test IS NIL), so the store is kept as a sorted #
+# scroll list -- the same representation as DynamicPhext -- and #
+# every update rebuilds the rows it touches, which is the #
+# observable equivalent for the sequential test contract: #
+# fetch / insert / replace / remove / serialize behave exactly #
+# as phext.transitive specifies. #
+FLEX [1:0]STRING trnk, trnt;
+FLEX [1:0]INT trnc;
+
+PROC trn len = INT: UPB trnk;
+
+PROC trn init = (STRING buf) VOID:
+BEGIN
+  [1:0]STRING ek, et;
+  [1:0]INT ec;
+  trnk := ek;
+  trnt := et;
+  trnc := ec;
+  IF UPB buf > 0 THEN
+    FLEX [1:0]STRING k, t;
+    FLEX [1:0]INT c;
+    phokenize (buf, k, t, c);
+    FOR i FROM 1 TO UPB k DO
+      sl append (trnk, trnt, trnc, sl coord (c, i), t[i])
+    OD
+  FI
+END;
+
+PROC trn serialize = STRING: dephokenize (trnk, trnt, trnc, FALSE);
+
+PROC trn find = ([]INT coord, REF BOOL found) INT:
+BEGIN
+  INT lo := 1, hi := UPB trnk + 1;
+  STRING ck := coord key (coord);
+  found := FALSE;
+  WHILE lo < hi DO
+    INT mid := idiv (lo + hi, 2);
+    IF trnk[mid] < ck THEN lo := mid + 1
+    ELIF trnk[mid] > ck THEN hi := mid
+    ELSE lo := mid; hi := mid; found := TRUE
+    FI
+  OD;
+  lo
+END;
+
+PROC trn fetch = ([]INT coord) STRING:
+BEGIN
+  BOOL f;
+  INT i := trn find (coord, f);
+  STRING r := "";
+  IF f THEN r := trnt[i] FI;
+  r
+END;
+
+PROC trn remove at = (INT idx) VOID:
+BEGIN
+  FLEX [1:0]STRING nk, nt;
+  FLEX [1:0]INT nc;
+  FOR i FROM 1 TO UPB trnk DO
+    IF i /= idx THEN
+      sl append (nk, nt, nc, sl coord (trnc, i), trnt[i])
+    FI
+  OD;
+  trnk := nk;
+  trnt := nt;
+  trnc := nc
+END;
+
+PROC trn update = ([]INT coord, STRING text, BOOL overwrite) VOID:
+BEGIN
+  BOOL f;
+  INT idx := trn find (coord, f);
+  IF f THEN
+    IF UPB text = 0 THEN
+      IF overwrite THEN trn remove at (idx) FI
+    ELIF overwrite THEN
+      trnt[idx] := text
+    ELSE
+      trnt[idx] := trnt[idx] + text
+    FI
+  ELIF UPB text > 0 THEN
+    FLEX [1:0]STRING nk, nt;
+    FLEX [1:0]INT nc;
+    FOR i FROM 1 TO UPB trnk DO
+      IF i = idx THEN
+        sl append (nk, nt, nc, coord, text)
+      FI;
+      sl append (nk, nt, nc, sl coord (trnc, i), trnt[i])
+    OD;
+    IF idx = UPB trnk + 1 THEN
+      sl append (nk, nt, nc, coord, text)
+    FI;
+    trnk := nk;
+    trnt := nt;
+    trnc := nc
+  FI
+END;
+
+PROC trn insert = ([]INT coord, STRING text) VOID:
+  trn update (coord, text, FALSE);
+
+PROC trn replace = ([]INT coord, STRING text) VOID:
+  trn update (coord, text, TRUE);
+
+PROC trn remove = ([]INT coord) VOID:
+BEGIN
+  BOOL f;
+  INT idx := trn find (coord, f);
+  IF f THEN trn remove at (idx) FI
+END;
+
+PROC trn append = ([]INT coord, STRING text) VOID:
+BEGIN
+  INT n := UPB trnk;
+  IF n > 0 THEN
+    IF coord cmp (coord, sl coord (trnc, n)) <= 0 THEN
+      print (("trn append: coordinate not past tail", newline))
+    FI
+  FI;
+  IF UPB text > 0 THEN
+    sl append (trnk, trnt, trnc, coord, text)
+  FI
+END;

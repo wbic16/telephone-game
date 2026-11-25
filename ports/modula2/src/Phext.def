@@ -1,0 +1,60 @@
+DEFINITION MODULE Phext;
+(* libphext core for the Modula-2 port, 0.6.1 parity with libphext-py:
+   9 dimension breaks; a scroll is a maximal run of non-break bytes;
+   insert concatenates, replace overwrites, remove is
+   coordinate-preserving (replace "" + normalize). *)
+
+FROM BStr IMPORT Bytes;
+
+TYPE
+  Coord = ARRAY [0..8] OF CARDINAL;
+
+  Map;      (* opaque: ordered scroll map, coords ascending *)
+  DynStore; (* opaque: DynamicPhext dynamic-array store *)
+  TrnStore; (* opaque: TransitivePhext branching store *)
+
+PROCEDURE CoordParse (s : Bytes; VAR c : Coord) : BOOLEAN;
+PROCEDURE CoordParseStr (s : ARRAY OF CHAR; VAR c : Coord) : BOOLEAN;
+PROCEDURE CoordToBytes (c : Coord; out : Bytes);
+PROCEDURE CoordStr (c : Coord) : Bytes;
+PROCEDURE CoordCmp (a, b : Coord) : INTEGER;
+PROCEDURE CoordEq (a, b : Coord) : BOOLEAN;
+
+PROCEDURE NewMap () : Map;
+PROCEDURE DisposeMap (VAR m : Map);
+PROCEDURE MapCount (m : Map) : CARDINAL;
+PROCEDURE MapCoordAt (m : Map; i : CARDINAL; VAR c : Coord);
+PROCEDURE MapTextAt (m : Map; i : CARDINAL) : Bytes;
+PROCEDURE MapFind (m : Map; c : Coord) : INTEGER;  (* index or -1 *)
+PROCEDURE MapFetch (m : Map; c : Coord) : Bytes;  (* NIL if absent *)
+(* overwrite=TRUE: replace; FALSE: insert (concatenate). Empty text
+   with overwrite removes; empty insert is a no-op. Takes ownership
+   of a copy: text is copied, caller keeps theirs. *)
+PROCEDURE MapUpdate (m : Map; c : Coord; text : Bytes; overwrite : BOOLEAN);
+
+PROCEDURE Explode (data : Bytes; m : Map);
+PROCEDURE Implode (m : Map; out : Bytes);
+
+(* Buffer API (each returns a fresh Bytes). *)
+PROCEDURE Fetch (data : Bytes; c : Coord) : Bytes;
+PROCEDURE Insert (data : Bytes; c : Coord; text : Bytes) : Bytes;
+PROCEDURE Replace (data : Bytes; c : Coord; text : Bytes) : Bytes;
+PROCEDURE Remove (data : Bytes; c : Coord) : Bytes;
+PROCEDURE Normalize (data : Bytes) : Bytes;
+
+PROCEDURE DynNew () : DynStore;
+PROCEDURE DynDispose (VAR d : DynStore);
+PROCEDURE DynUpdate (d : DynStore; c : Coord; text : Bytes; overwrite : BOOLEAN);
+PROCEDURE DynFetch (d : DynStore; c : Coord) : Bytes;
+PROCEDURE DynLen (d : DynStore) : CARDINAL;
+PROCEDURE DynSerialize (d : DynStore; out : Bytes);
+
+PROCEDURE TrnNew () : TrnStore;
+PROCEDURE TrnDispose (VAR t : TrnStore);
+PROCEDURE TrnUpdate (t : TrnStore; c : Coord; text : Bytes; overwrite : BOOLEAN);
+PROCEDURE TrnFetch (t : TrnStore; c : Coord) : Bytes;
+PROCEDURE TrnLen (t : TrnStore) : CARDINAL;
+PROCEDURE TrnSerialize (t : TrnStore; out : Bytes);
+PROCEDURE TrnDepth () : CARDINAL;
+
+END Phext.

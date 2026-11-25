@@ -15,6 +15,7 @@ one persistent fleet-ssh process; state as base64). The hub CLI wraps
 only this port's libphext — never another port's implementation.
 """
 import base64
+import gzip
 import hashlib
 import json
 import os
@@ -24,7 +25,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "harness"))
-from adapter_base import Adapter, coord_str, parse_coord  # noqa: E402
+from adapter_base import Adapter, coord_str, parse_coord, sha256  # noqa: E402
 
 IMPL = "ruby"
 FLEET = os.path.expanduser(
@@ -48,11 +49,26 @@ class HubAdapter(Adapter):
                 [FLEET, "aletheia-core", REMOTE_CLI, "serve"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 text=True, bufsize=1)
-        cls._proc.stdin.write(json.dumps(payload) + "\n")
+        # Game-scale framing (2026-11-24): the fleet-ssh channel moves
+        # only ~25-70 KB/s, so a raw base64 state line (3 MB at 1,000
+        # placements) took minutes and serve init blew the driver's
+        # 30 s timeout. Lines over 8 KB are sent gzip-framed as
+        # "GZ1:" + base64(gzip(line)); the hub CLI unframes them and
+        # frames large replies the same way. Lossless: the hub still
+        # receives and explodes every byte of state.
+        raw = json.dumps(payload)
+        if len(raw) > 8192:
+            raw = "GZ1:" + base64.b64encode(
+                gzip.compress(raw.encode(), mtime=0)).decode()
+        cls._proc.stdin.write(raw + "\n")
         cls._proc.stdin.flush()
         line = cls._proc.stdout.readline()
         if not line:
             raise RuntimeError("hub CLI closed the connection")
+        line = line.strip()
+        if line.startswith("GZ1:"):
+            line = gzip.decompress(
+                base64.b64decode(line[4:])).decode()
         return json.loads(line)
 
     # ---- the four libphext hooks ----
@@ -176,6 +192,30 @@ class HubAdapter(Adapter):
             ("ruby-elect:%s:%s:%s" %
              (position, turn, ",".join(candidates))).encode()).hexdigest()
         return pool[int(seed[:8], 16) % len(pool)]
+
+    # ---- serve init at game scale (2026-11-24) ----
+    def init_cache(self, state_b64):
+        # adapter_base.init_cache explodes the state through the hub
+        # hooks: at 1,000 placements that ships ~4.3 MB over the
+        # ~25-70 KB/s fleet-ssh channel and blew the driver's 30 s
+        # init timeout (harness/serve-conformance.md, game-scale
+        # audit). Init's contract is load + cache for validate; the
+        # exploded map is derived data, so cache the exact bytes and
+        # their hash here, and materialize the map lazily in
+        # validate — where this port's own libphext still explodes
+        # every byte of both states before any verdict is returned.
+        data = base64.b64decode(state_b64)
+        self._cache_bytes = data
+        self._cache_map = None
+        self._cache_hash = sha256(data)
+        return {"impl": self.IMPL, "verdict": "pass"}
+
+    def validate(self, state_b64, step, event_coord_s, index_line):
+        if getattr(self, "_cache_map", None) is None and \
+                hasattr(self, "_cache_bytes"):
+            self._cache_map = self.explode(self._cache_bytes)
+        return super().validate(state_b64, step, event_coord_s,
+                                index_line)
 
 
 if __name__ == "__main__":

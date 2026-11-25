@@ -26,6 +26,8 @@ require 'digest'
 require 'fileutils'
 require 'json'
 require 'open3'
+require 'stringio'
+require 'zlib'
 require 'tmpdir'
 require_relative 'phext'
 
@@ -481,13 +483,32 @@ def dispatch(req)
   end
 end
 
+# Game-scale framing (2026-11-24): lines over 8 KB may arrive
+# gzip-framed as "GZ1:" + base64(gzip(line)) — the fleet-ssh channel
+# is ~25-70 KB/s and raw base64 state lines took minutes at 1,000
+# placements. Lossless; plain lines unchanged.
+def gz_unframe(s)
+  Zlib::GzipReader.new(StringIO.new(Base64.decode64(s[4..]))).read
+end
+
+def gz_frame(s)
+  io = StringIO.new
+  gz = Zlib::GzipWriter.new(io)
+  gz.write(s)
+  gz.close
+  'GZ1:' + Base64.strict_encode64(io.string)
+end
+
 if ARGV[0] == 'serve'
   STDIN.each_line do |line|
     line = line.strip
     next if line.empty?
 
     begin
-      puts JSON.generate(dispatch(JSON.parse(line)))
+      line = gz_unframe(line) if line.start_with?('GZ1:')
+      out = JSON.generate(dispatch(JSON.parse(line)))
+      out = gz_frame(out) if out.length > 8192
+      puts out
     rescue StandardError => e
       puts JSON.generate({ 'error' => e.message })
     end

@@ -1,0 +1,7 @@
+{
+ "adapter": "ports/scheme/adapter",
+ "id": "scheme",
+ "kind": "port",
+ "note": "libphext-scheme (GNU Guile 3.0.11, user-level conda env in ~/tools/mamba-root/envs/scheme on aletheia-core; Guile stdlib only -- hand-written JSON, sha256, base64, gzip in src/cli.scm + src/phext.scm). Suite green (74 checks, fixtures 16/16 byte-identical + 16/16 normalize-idempotent); remove is coordinate-preserving (gap, no renumbering) per libphext-py. v2 adapter self-test PASS; one-shot verify vs games/smoke-001/stress.phext PASS/30 verbatim {\"first_failure\": null, \"impl\": \"scheme\", \"placements_checked\": 30, \"verdict\": \"pass\"}. Game-scale (snapshot copy of games/test-001/stress.phext as inscribed after turn 1001, 2,240,276 B / 1,001 placements): FULL serve audit -- init pass 0.08 s (driver timeout 30 s), echo 1.99 s, elect 0.14 s, choose 3.93 s, apply 9.54 s (hash match), attest 0.26 s (per-call window 15 s), serve verify pass/1001 in 35.01 s, serve validate (post-turn snapshot method) pass in 12.08 s (driver timeout 60 s). Wire framing GZ1 over 8 KB in adapter + hub CLI; serve init uses the deferred cache. Local source == hub CLI byte-identical (md5 verified).",
+ "status": "playing"
+}

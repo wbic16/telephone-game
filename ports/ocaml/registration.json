@@ -1,0 +1,7 @@
+{
+ "id": "ocaml",
+ "adapter": "ports/ocaml/adapter",
+ "status": "playing",
+ "kind": "port",
+ "note": "libphext OCaml port, 0.6.1 parity; built+tested on aletheia-core (OCaml 4.14.1, ocamlopt; hand-written SHA-256/base64/JSON in src/wire.ml); fixtures 16/16 input.phext byte-identical round-trips, normalize idempotent; adapter contract v2 self-test PASS (keygen/seek/elect/insert-only choose+apply/attest/validate incl. driver-form cache validate/verify); serve init PASS; smoke-001 verify PASS / 30 placements"
+}

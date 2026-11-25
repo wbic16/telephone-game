@@ -85,15 +85,69 @@ program telephone
   do
     read(*, '(A)', iostat=ios) req
     if (ios /= 0 .and. len_trim(req) == 0) exit
+    ! Game-scale framing (2026-11-24): lines over 8 KB may arrive
+    ! gzip-framed as "GZ1:" + base64(gzip(line)) — the fleet-ssh
+    ! channel is ~25-70 KB/s and raw base64 state lines took minutes
+    ! at 1,000 placements. Fortran has no zlib, so (de)compression
+    ! shells to the system gzip(1) on temp files. Lossless; plain
+    ! lines unchanged.
+    if (len_trim(req) >= 4) then
+      if (req(1:4) == 'GZ1:') call gz_unframe_req()
+    end if
     ! NB: never reassign req itself (allocatable assignment would
     ! shrink the buffer); pass the used slice to handle.
     out = handle(req(1:len_trim(req)))
+    if (len_trim(out) > 8192) call gz_frame_out()
     write(*, '(A)') out
     if (.not. serve) exit
     if (ios /= 0) exit
   end do
 
 contains
+
+  subroutine gz_unframe_req()
+    ! Replace the GZ1:-framed content of req with the plain line,
+    ! in place (req's 64 MB allocation is preserved).
+    character(len=:), allocatable :: raw, plain
+    integer :: u, sz
+    raw = b64_decode(req(5:len_trim(req)))
+    open(newunit=u, file='/tmp/telephone-fortran-gz.bin', &
+         access='stream', form='unformatted', status='replace')
+    write(u) raw
+    close(u)
+    call execute_command_line('gzip -dc /tmp/telephone-fortran-gz.bin' // &
+         ' > /tmp/telephone-fortran-gz.out')
+    inquire(file='/tmp/telephone-fortran-gz.out', size=sz)
+    allocate(character(len=sz) :: plain)
+    open(newunit=u, file='/tmp/telephone-fortran-gz.out', &
+         access='stream', form='unformatted', status='old')
+    read(u) plain
+    close(u)
+    req(1:sz) = plain
+    req(sz+1:) = ' '
+    deallocate(raw, plain)
+  end subroutine gz_unframe_req
+
+  subroutine gz_frame_out()
+    ! Replace out with its GZ1:-framed form.
+    character(len=:), allocatable :: gz
+    integer :: u, sz
+    open(newunit=u, file='/tmp/telephone-fortran-gz.bin', &
+         access='stream', form='unformatted', status='replace')
+    write(u) out(1:len_trim(out))
+    close(u)
+    call execute_command_line('gzip -c /tmp/telephone-fortran-gz.bin' // &
+         ' > /tmp/telephone-fortran-gz.out')
+    inquire(file='/tmp/telephone-fortran-gz.out', size=sz)
+    allocate(character(len=sz) :: gz)
+    open(newunit=u, file='/tmp/telephone-fortran-gz.out', &
+         access='stream', form='unformatted', status='old')
+    read(u) gz
+    close(u)
+    out = 'GZ1:' // b64_encode(gz)
+    deallocate(gz)
+  end subroutine gz_frame_out
+
 
   function handle(req) result(out)
     character(len=*), intent(in) :: req

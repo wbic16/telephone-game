@@ -1,0 +1,7 @@
+{
+ "id": "vb",
+ "adapter": "ports/vb/adapter",
+ "status": "playing",
+ "kind": "port",
+ "note": "libphext Visual Basic (.NET) port, 0.6.1 parity; built+tested on aletheia-core (dotnet 8.0.427 at ~/.dotnet, VB.NET; System.Text.Json + SHA-256 from System.Security.Cryptography); fixtures 16/16 input.phext byte-identical round-trips, normalize idempotent; adapter contract v2 self-test PASS (keygen/seek/elect/insert-only choose+apply/attest/validate incl. driver-form cache validate/verify); serve init PASS; smoke-001 verify PASS / 30 placements"
+}

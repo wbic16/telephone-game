@@ -78,16 +78,19 @@ coord_apply_break <- function(coord, d) {
 ## ------------------------------------------------------------------
 ## Text edges (latin-1 convention). See the header note on byte 0.
 text_to_raw <- function(text) {
+  # Vectorized (2026-11-24): the original per-codepoint c() loop is
+  # O(n^2) and took ~560 s on a 1.3 MB string at game scale -- it sat
+  # inside the serve framing path (memCompress/gzip framing both call
+  # it) and made serve-mode explode/validate appear hung. Semantics
+  # unchanged: cp < 256 emits the single byte cp; above that, the
+  # character's UTF-8 bytes.
   cps <- utf8ToInt(enc2utf8(text))
-  out <- raw(0)
-  for (cp in cps) {
-    if (cp < 256L) {
-      out <- c(out, as.raw(cp))
-    } else {
-      out <- c(out, charToRaw(enc2utf8(intToUtf8(cp))))
-    }
-  }
-  out
+  if (length(cps) == 0L) return(raw(0))
+  if (all(cps < 256L)) return(as.raw(cps))
+  chunks <- lapply(cps, function(cp) {
+    if (cp < 256L) as.raw(cp) else charToRaw(enc2utf8(intToUtf8(cp)))
+  })
+  do.call(c, chunks)
 }
 raw_to_text <- function(bytes) {
   vals <- as.integer(bytes)

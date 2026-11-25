@@ -1,0 +1,7 @@
+{
+ "adapter": "ports/haskell/adapter",
+ "id": "haskell",
+ "kind": "port",
+ "note": "libphext Haskell port, 0.6.1 parity; GHCup user-level on aletheia-core (GHC 9.6.6 + cabal 3.10.3.0 in ~/.ghcup, boot libraries only; hand-written SHA-256/base64/JSON in src/Wire.hs); native suite PASS, fixtures 16/16 byte-identical round-trips, remove coordinate-preserving; adapter contract v2 self-test PASS (keygen/seek/elect/insert-only choose+apply/attest/validate incl. driver-form cache validate/verify); smoke-001 verify PASS / 30 placements verbatim {\"first_failure\": null, \"impl\": \"haskell\", \"placements_checked\": 30, \"verdict\": \"pass\"}; game-scale rehearsal on snapshot copy of games/test-001/stress.phext: serve init 0.10s (30s budget), driver-form validate 5.58s (60s budget), PASS",
+ "status": "playing"
+}

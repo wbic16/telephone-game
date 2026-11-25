@@ -1,0 +1,7 @@
+{
+ "adapter": null,
+ "id": "solidity",
+ "kind": "port",
+ "note": "blocked-for-classification-review 2026-11-24: solc 0.8.26 user-level installed (~/tools/solc) and a genuine libphext core written in Solidity (src/Phext.sol: phokenize/dephokenize/fetch/insert/replace/coordinate-preserving remove/normalize, all pure) compiles clean (Phext.bin 11048 B, sha256 4b804903287d5c4691cba927a1cbdb5110d5d8c16bec72f5578ed46d1340fd41), but the adapter contract is unsatisfiable from inside the EVM: no EVM runtime exists on the hub (geth/anvil/forge/cast/evm/ganache/hardhat all ABSENT) and the EVM instruction set has no file/process/stream opcodes, so seek (raw file I/O), keygen/attest (subprocess PGP) and serve (stdin/stdout) are impossible in-contract; gas metering also puts a 2.2 MB validate beyond one block. No other language was shelled out to for the phext logic. Full record: ports/solidity/EVIDENCE.md and README.md.",
+ "status": "blocked"
+}

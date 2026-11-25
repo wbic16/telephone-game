@@ -12,3 +12,1188 @@ Traceback (most recent call last):
   File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 115, in call
     raise RuntimeError("%s: %s" % (self.id, out["error"]))
 RuntimeError: fortran: unknown cmd
+Traceback (most recent call last):
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 545, in <module>
+    main()
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 541, in main
+    args.f(args)
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 326, in cmd_play
+    serves[e["id"]].call({"cmd": "init", "state_path": game.file})
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 112, in call
+    line = self._readline(timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 127, in _readline
+    raise TimeoutError("%s did not respond" % self.id)
+TimeoutError: dart did not respond
+Traceback (most recent call last):
+  File "/home/hatch/workspace/libphext-telephone/ports/dart/adapter", line 182, in <module>
+    HubAdapter().main()
+  File "/home/hatch/workspace/libphext-telephone/ports/dart/../../harness/adapter_base.py", line 316, in main
+    self.serve()
+  File "/home/hatch/workspace/libphext-telephone/ports/dart/../../harness/adapter_base.py", line 312, in serve
+    sys.stdout.flush()
+BrokenPipeError: [Errno 32] Broken pipe
+Exception ignored in: <_io.TextIOWrapper name='<stdout>' mode='w' encoding='utf-8'>
+BrokenPipeError: [Errno 32] Broken pipe
+Traceback (most recent call last):
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 595, in <module>
+    main()
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 591, in main
+    args.f(args)
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 482, in cmd_play
+    v = serves[e["id"]].call(
+        ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 112, in call
+    line = self._readline(timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 127, in _readline
+    raise TimeoutError("%s did not respond" % self.id)
+TimeoutError: erlang did not respond
+     warning: a struct for BranchingMap is expected on struct update:
+
+         %BranchingMap{
+           bm
+           | root: root,
+             count:
+               bm.count +
+                 if created do
+                   1
+                 else
+                   0
+                 end
+         }
+
+     but got type:
+
+         dynamic(%{..., depth: float() or integer(), root: map()})
+
+     where "bm" was given the types:
+
+         # type: dynamic(%{..., root: map()})
+         # from: telephone-elixir/port/src/phext.ex:320:23
+         put_rec(bm.root, Tuple.to_list(key), bm.depth, value)
+
+         # type: dynamic(%{..., depth: float() or integer(), root: map()})
+         # from: telephone-elixir/port/src/phext.ex:320:23
+         put_rec(bm.root, Tuple.to_list(key), bm.depth, value)
+
+     when defining the variable "bm", you must also pattern match on "%BranchingMap{}"
+
+     type warning found at:
+     │
+ 321 │     {%__MODULE__{bm | root: root, count: bm.count + if(created, do: 1, else: 0)}, created}
+     │      ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:321:6: BranchingMap.put/3
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{
+           dp
+           | data: nd,
+             capacity: new_capacity,
+             resize_count: dp.resize_count + 1,
+             elements_copied: dp.elements_copied + dp.n
+         }
+
+     but got type:
+
+         dynamic(%{..., n: integer()})
+
+     where "dp" was given the type:
+
+         # type: dynamic(%{..., n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:182:27
+         dp.n - 1
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 186 │     %__MODULE__{
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:186:5: DynamicPhext.resize/2
+
+     warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{acc | map: m}
+
+     but got type:
+
+         dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+
+     where "acc" was given the type:
+
+         # type: dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+         # from: telephone-elixir/port/src/phext.ex:385:29
+         BranchingMap.put(acc.map, c, t)
+
+     when defining the variable "acc", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 386 │       %__MODULE__{acc | map: m}
+     │       ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:386:7: TransitivePhext.load/2
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(dp.data, dp.n, ps), n: dp.n + 1}
+
+     but got type:
+
+         dynamic(%{..., capacity: term(), n: term()})
+
+     where "dp" was given the type:
+
+         # type: dynamic(%{..., capacity: term(), n: term()})
+         # from: telephone-elixir/port/src/phext.ex:204:8
+         dp = grow_if_full(dp)
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 205 │     %__MODULE__{dp | data: put_elem(dp.data, dp.n, ps), n: dp.n + 1}
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:205:5: DynamicPhext.push/2
+
+     warning: a struct for BranchingMap is expected on struct update:
+
+         %BranchingMap{
+           bm
+           | root: root,
+             count:
+               bm.count -
+                 if removed do
+                   1
+                 else
+                   0
+                 end
+         }
+
+     but got type:
+
+         dynamic(%{..., depth: term(), root: map()})
+
+     where "bm" was given the types:
+
+         # type: dynamic(%{..., root: map()})
+         # from: telephone-elixir/port/src/phext.ex:334:23
+         remove_rec(bm.root, Tuple.to_list(key), bm.depth)
+
+         # type: dynamic(%{..., depth: term(), root: map()})
+         # from: telephone-elixir/port/src/phext.ex:334:23
+         remove_rec(bm.root, Tuple.to_list(key), bm.depth)
+
+     when defining the variable "bm", you must also pattern match on "%BranchingMap{}"
+
+     type warning found at:
+     │
+ 335 │     {%__MODULE__{bm | root: root, count: bm.count - if(removed, do: 1, else: 0)}, removed}
+     │      ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:335:6: BranchingMap.remove/2
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(dp.data, idx, {coord, t})}
+
+     but got type:
+
+         dynamic(%{..., data: {term(), ...}, n: term()})
+
+     where "dp" was given the types:
+
+         # type: dynamic(%{..., data: term(), n: term()})
+         # from: telephone-elixir/port/src/phext.ex:245:20
+         find(dp, coord)
+
+         # type: dynamic(%{..., data: {term(), ...}, n: term()})
+         # from: telephone-elixir/port/src/phext.ex:252:20
+         elem(dp.data, idx)
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 254 │         %__MODULE__{dp | data: put_elem(dp.data, idx, {coord, t})}
+     │         ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:254:9: DynamicPhext.update/4
+
+     warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{tp | map: m}
+
+     but got type:
+
+         dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+
+     where "tp" was given the type:
+
+         # type: dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+         # from: telephone-elixir/port/src/phext.ex:401:31
+         BranchingMap.put(tp.map, coord, text)
+
+     when defining the variable "tp", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 402 │         %__MODULE__{tp | map: m}
+     │         ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:402:9: TransitivePhext.update/4
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(data, dp.n - 1, nil), n: dp.n - 1}
+
+     but got type:
+
+         dynamic(%{..., data: term(), n: integer()})
+
+     where "dp" was given the types:
+
+         # type: dynamic(%{..., data: term(), n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:276:12
+         Enum.reduce(Range.new(idx, dp.n - 2, 1), dp.data, fn i, d -> put_elem(d, i, elem(d, i + 1)) end)
+
+         # type: dynamic(%{..., n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:276:30
+         dp.n - 2
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 280 │     dp = %__MODULE__{dp | data: put_elem(data, dp.n - 1, nil), n: dp.n - 1}
+     │          ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:280:10: DynamicPhext.remove_at/2
+
+     warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{tp | map: m}
+
+     but got type:
+
+         dynamic(%{..., map: %{..., count: float() or integer(), depth: term(), root: map()}})
+
+     where "tp" was given the type:
+
+         # type: dynamic(%{..., map: %{..., count: float() or integer(), depth: term(), root: map()}})
+         # from: telephone-elixir/port/src/phext.ex:415:27
+         BranchingMap.remove(tp.map, coord)
+
+     when defining the variable "tp", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 416 │     %__MODULE__{tp | map: m}
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:416:5: TransitivePhext.remove/2
+
+Traceback (most recent call last):
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 595, in <module>
+    main()
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 591, in main
+    args.f(args)
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 482, in cmd_play
+    v = serves[e["id"]].call(
+        ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 112, in call
+    line = self._readline(timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 127, in _readline
+    raise TimeoutError("%s did not respond" % self.id)
+TimeoutError: delphi did not respond
+redefined table-find  redefined ph-buf  redefined ph-len  redefined ph-arena  redefined ph-table  redefined insert  redefined arena-free  redefined cs-len       warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{acc | map: m}
+
+     but got type:
+
+         dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+
+     where "acc" was given the type:
+
+         # type: dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+         # from: telephone-elixir/port/src/phext.ex:385:29
+         BranchingMap.put(acc.map, c, t)
+
+     when defining the variable "acc", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 386 │       %__MODULE__{acc | map: m}
+     │       ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:386:7: TransitivePhext.load/2
+
+     warning: a struct for BranchingMap is expected on struct update:
+
+         %BranchingMap{
+           bm
+           | root: root,
+             count:
+               bm.count +
+                 if created do
+                   1
+                 else
+                   0
+                 end
+         }
+
+     but got type:
+
+         dynamic(%{..., depth: float() or integer(), root: map()})
+
+     where "bm" was given the types:
+
+         # type: dynamic(%{..., root: map()})
+         # from: telephone-elixir/port/src/phext.ex:320:23
+         put_rec(bm.root, Tuple.to_list(key), bm.depth, value)
+
+         # type: dynamic(%{..., depth: float() or integer(), root: map()})
+         # from: telephone-elixir/port/src/phext.ex:320:23
+         put_rec(bm.root, Tuple.to_list(key), bm.depth, value)
+
+     when defining the variable "bm", you must also pattern match on "%BranchingMap{}"
+
+     type warning found at:
+     │
+ 321 │     {%__MODULE__{bm | root: root, count: bm.count + if(created, do: 1, else: 0)}, created}
+     │      ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:321:6: BranchingMap.put/3
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{
+           dp
+           | data: nd,
+             capacity: new_capacity,
+             resize_count: dp.resize_count + 1,
+             elements_copied: dp.elements_copied + dp.n
+         }
+
+     but got type:
+
+         dynamic(%{..., n: integer()})
+
+     where "dp" was given the type:
+
+         # type: dynamic(%{..., n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:182:27
+         dp.n - 1
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 186 │     %__MODULE__{
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:186:5: DynamicPhext.resize/2
+
+     warning: a struct for BranchingMap is expected on struct update:
+
+         %BranchingMap{
+           bm
+           | root: root,
+             count:
+               bm.count -
+                 if removed do
+                   1
+                 else
+                   0
+                 end
+         }
+
+     but got type:
+
+         dynamic(%{..., depth: term(), root: map()})
+
+     where "bm" was given the types:
+
+         # type: dynamic(%{..., root: map()})
+         # from: telephone-elixir/port/src/phext.ex:334:23
+         remove_rec(bm.root, Tuple.to_list(key), bm.depth)
+
+         # type: dynamic(%{..., depth: term(), root: map()})
+         # from: telephone-elixir/port/src/phext.ex:334:23
+         remove_rec(bm.root, Tuple.to_list(key), bm.depth)
+
+     when defining the variable "bm", you must also pattern match on "%BranchingMap{}"
+
+     type warning found at:
+     │
+ 335 │     {%__MODULE__{bm | root: root, count: bm.count - if(removed, do: 1, else: 0)}, removed}
+     │      ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:335:6: BranchingMap.remove/2
+
+     warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{tp | map: m}
+
+     but got type:
+
+         dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+
+     where "tp" was given the type:
+
+         # type: dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+         # from: telephone-elixir/port/src/phext.ex:401:31
+         BranchingMap.put(tp.map, coord, text)
+
+     when defining the variable "tp", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 402 │         %__MODULE__{tp | map: m}
+     │         ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:402:9: TransitivePhext.update/4
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(dp.data, dp.n, ps), n: dp.n + 1}
+
+     but got type:
+
+         dynamic(%{..., capacity: term(), n: term()})
+
+     where "dp" was given the type:
+
+         # type: dynamic(%{..., capacity: term(), n: term()})
+         # from: telephone-elixir/port/src/phext.ex:204:8
+         dp = grow_if_full(dp)
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 205 │     %__MODULE__{dp | data: put_elem(dp.data, dp.n, ps), n: dp.n + 1}
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:205:5: DynamicPhext.push/2
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(dp.data, idx, {coord, t})}
+
+     but got type:
+
+         dynamic(%{..., data: {term(), ...}, n: term()})
+
+     where "dp" was given the types:
+
+         # type: dynamic(%{..., data: term(), n: term()})
+         # from: telephone-elixir/port/src/phext.ex:245:20
+         find(dp, coord)
+
+         # type: dynamic(%{..., data: {term(), ...}, n: term()})
+         # from: telephone-elixir/port/src/phext.ex:252:20
+         elem(dp.data, idx)
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 254 │         %__MODULE__{dp | data: put_elem(dp.data, idx, {coord, t})}
+     │         ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:254:9: DynamicPhext.update/4
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(data, dp.n - 1, nil), n: dp.n - 1}
+
+     but got type:
+
+         dynamic(%{..., data: term(), n: integer()})
+
+     where "dp" was given the types:
+
+         # type: dynamic(%{..., data: term(), n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:276:12
+         Enum.reduce(Range.new(idx, dp.n - 2, 1), dp.data, fn i, d -> put_elem(d, i, elem(d, i + 1)) end)
+
+         # type: dynamic(%{..., n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:276:30
+         dp.n - 2
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 280 │     dp = %__MODULE__{dp | data: put_elem(data, dp.n - 1, nil), n: dp.n - 1}
+     │          ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:280:10: DynamicPhext.remove_at/2
+
+     warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{tp | map: m}
+
+     but got type:
+
+         dynamic(%{..., map: %{..., count: float() or integer(), depth: term(), root: map()}})
+
+     where "tp" was given the type:
+
+         # type: dynamic(%{..., map: %{..., count: float() or integer(), depth: term(), root: map()}})
+         # from: telephone-elixir/port/src/phext.ex:415:27
+         BranchingMap.remove(tp.map, coord)
+
+     when defining the variable "tp", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 416 │     %__MODULE__{tp | map: m}
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:416:5: TransitivePhext.remove/2
+
+Traceback (most recent call last):
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 252, in call_with_retry
+    return s.call(req, timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 112, in call
+    line = self._readline(timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 127, in _readline
+    raise TimeoutError("%s did not respond" % self.id)
+TimeoutError: cfml did not respond
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 676, in <module>
+    main()
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 672, in main
+    args.f(args)
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 562, in cmd_play
+    v = call_with_retry(
+        ^^^^^^^^^^^^^^^^
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 260, in call_with_retry
+    raise first_exc
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 252, in call_with_retry
+    return s.call(req, timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 112, in call
+    line = self._readline(timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/hatch/workspace/libphext-telephone/harness/telephone.py", line 127, in _readline
+    raise TimeoutError("%s did not respond" % self.id)
+TimeoutError: cfml did not respond
+720     establish (f, path, stand out channel);
+        1                                      
+a68g: warning: 1: INT value yielded by call will be voided, in closed-clause beginning with "BEGIN" in line 718.
+747     system ("rm -f " + sf);
+        1                      
+a68g: warning: 1: INT value yielded by call will be voided, in closed-clause beginning with "BEGIN" in line 738.
+847     system ("rm -f " + fb + " " + fb + ".raw " + fb + ".out");
+        1                                                         
+a68g: warning: 1: INT value yielded by call will be voided, in closed-clause beginning with "BEGIN" in line 841.
+858     system ("rm -f " + fb + " " + fb + ".out");
+        1                                          
+a68g: warning: 1: INT value yielded by call will be voided, in closed-clause beginning with "BEGIN" in line 852.
+869     system ("rm -f " + fb + " " + fb + ".out");
+        1                                          
+a68g: warning: 1: INT value yielded by call will be voided, in closed-clause beginning with "BEGIN" in line 863.
+1333    establish (f, path, stand out channel);
+        1                                      
+a68g: warning: 1: further diagnostics suppressed, in closed-clause beginning with "BEGIN" in line 1331.
+redefined table-find  redefined ph-buf  redefined ph-len  redefined ph-arena  redefined ph-table  redefined insert  redefined arena-free  redefined cs-len       warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{acc | map: m}
+
+     but got type:
+
+         dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+
+     where "acc" was given the type:
+
+         # type: dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+         # from: telephone-elixir/port/src/phext.ex:385:29
+         BranchingMap.put(acc.map, c, t)
+
+     when defining the variable "acc", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 386 │       %__MODULE__{acc | map: m}
+     │       ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:386:7: TransitivePhext.load/2
+
+     warning: a struct for BranchingMap is expected on struct update:
+
+         %BranchingMap{
+           bm
+           | root: root,
+             count:
+               bm.count +
+                 if created do
+                   1
+                 else
+                   0
+                 end
+         }
+
+     but got type:
+
+         dynamic(%{..., depth: float() or integer(), root: map()})
+
+     where "bm" was given the types:
+
+         # type: dynamic(%{..., root: map()})
+         # from: telephone-elixir/port/src/phext.ex:320:23
+         put_rec(bm.root, Tuple.to_list(key), bm.depth, value)
+
+         # type: dynamic(%{..., depth: float() or integer(), root: map()})
+         # from: telephone-elixir/port/src/phext.ex:320:23
+         put_rec(bm.root, Tuple.to_list(key), bm.depth, value)
+
+     when defining the variable "bm", you must also pattern match on "%BranchingMap{}"
+
+     type warning found at:
+     │
+ 321 │     {%__MODULE__{bm | root: root, count: bm.count + if(created, do: 1, else: 0)}, created}
+     │      ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:321:6: BranchingMap.put/3
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{
+           dp
+           | data: nd,
+             capacity: new_capacity,
+             resize_count: dp.resize_count + 1,
+             elements_copied: dp.elements_copied + dp.n
+         }
+
+     but got type:
+
+         dynamic(%{..., n: integer()})
+
+     where "dp" was given the type:
+
+         # type: dynamic(%{..., n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:182:27
+         dp.n - 1
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 186 │     %__MODULE__{
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:186:5: DynamicPhext.resize/2
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(dp.data, dp.n, ps), n: dp.n + 1}
+
+     but got type:
+
+         dynamic(%{..., capacity: term(), n: term()})
+
+     where "dp" was given the type:
+
+         # type: dynamic(%{..., capacity: term(), n: term()})
+         # from: telephone-elixir/port/src/phext.ex:204:8
+         dp = grow_if_full(dp)
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 205 │     %__MODULE__{dp | data: put_elem(dp.data, dp.n, ps), n: dp.n + 1}
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:205:5: DynamicPhext.push/2
+
+     warning: a struct for BranchingMap is expected on struct update:
+
+         %BranchingMap{
+           bm
+           | root: root,
+             count:
+               bm.count -
+                 if removed do
+                   1
+                 else
+                   0
+                 end
+         }
+
+     but got type:
+
+         dynamic(%{..., depth: term(), root: map()})
+
+     where "bm" was given the types:
+
+         # type: dynamic(%{..., root: map()})
+         # from: telephone-elixir/port/src/phext.ex:334:23
+         remove_rec(bm.root, Tuple.to_list(key), bm.depth)
+
+         # type: dynamic(%{..., depth: term(), root: map()})
+         # from: telephone-elixir/port/src/phext.ex:334:23
+         remove_rec(bm.root, Tuple.to_list(key), bm.depth)
+
+     when defining the variable "bm", you must also pattern match on "%BranchingMap{}"
+
+     type warning found at:
+     │
+ 335 │     {%__MODULE__{bm | root: root, count: bm.count - if(removed, do: 1, else: 0)}, removed}
+     │      ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:335:6: BranchingMap.remove/2
+
+     warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{tp | map: m}
+
+     but got type:
+
+         dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+
+     where "tp" was given the type:
+
+         # type: dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+         # from: telephone-elixir/port/src/phext.ex:401:31
+         BranchingMap.put(tp.map, coord, text)
+
+     when defining the variable "tp", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 402 │         %__MODULE__{tp | map: m}
+     │         ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:402:9: TransitivePhext.update/4
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(dp.data, idx, {coord, t})}
+
+     but got type:
+
+         dynamic(%{..., data: {term(), ...}, n: term()})
+
+     where "dp" was given the types:
+
+         # type: dynamic(%{..., data: term(), n: term()})
+         # from: telephone-elixir/port/src/phext.ex:245:20
+         find(dp, coord)
+
+         # type: dynamic(%{..., data: {term(), ...}, n: term()})
+         # from: telephone-elixir/port/src/phext.ex:252:20
+         elem(dp.data, idx)
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 254 │         %__MODULE__{dp | data: put_elem(dp.data, idx, {coord, t})}
+     │         ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:254:9: DynamicPhext.update/4
+
+     warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{tp | map: m}
+
+     but got type:
+
+         dynamic(%{..., map: %{..., count: float() or integer(), depth: term(), root: map()}})
+
+     where "tp" was given the type:
+
+         # type: dynamic(%{..., map: %{..., count: float() or integer(), depth: term(), root: map()}})
+         # from: telephone-elixir/port/src/phext.ex:415:27
+         BranchingMap.remove(tp.map, coord)
+
+     when defining the variable "tp", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 416 │     %__MODULE__{tp | map: m}
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:416:5: TransitivePhext.remove/2
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(data, dp.n - 1, nil), n: dp.n - 1}
+
+     but got type:
+
+         dynamic(%{..., data: term(), n: integer()})
+
+     where "dp" was given the types:
+
+         # type: dynamic(%{..., data: term(), n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:276:12
+         Enum.reduce(Range.new(idx, dp.n - 2, 1), dp.data, fn i, d -> put_elem(d, i, elem(d, i + 1)) end)
+
+         # type: dynamic(%{..., n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:276:30
+         dp.n - 2
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 280 │     dp = %__MODULE__{dp | data: put_elem(data, dp.n - 1, nil), n: dp.n - 1}
+     │          ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:280:10: DynamicPhext.remove_at/2
+
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+client_loop: send disconnect: Broken pipe
+720     establish (f, path, stand out channel);
+        1                                      
+a68g: warning: 1: INT value yielded by call will be voided, in closed-clause beginning with "BEGIN" in line 718.
+747     system ("rm -f " + sf);
+        1                      
+a68g: warning: 1: INT value yielded by call will be voided, in closed-clause beginning with "BEGIN" in line 738.
+847     system ("rm -f " + fb + " " + fb + ".raw " + fb + ".out");
+        1                                                         
+a68g: warning: 1: INT value yielded by call will be voided, in closed-clause beginning with "BEGIN" in line 841.
+858     system ("rm -f " + fb + " " + fb + ".out");
+        1                                          
+a68g: warning: 1: INT value yielded by call will be voided, in closed-clause beginning with "BEGIN" in line 852.
+869     system ("rm -f " + fb + " " + fb + ".out");
+        1                                          
+a68g: warning: 1: INT value yielded by call will be voided, in closed-clause beginning with "BEGIN" in line 863.
+1333    establish (f, path, stand out channel);
+        1                                      
+a68g: warning: 1: further diagnostics suppressed, in closed-clause beginning with "BEGIN" in line 1331.
+redefined table-find  redefined ph-buf  redefined ph-len  redefined ph-arena  redefined ph-table  redefined insert  redefined arena-free  redefined cs-len       warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{acc | map: m}
+
+     but got type:
+
+         dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+
+     where "acc" was given the type:
+
+         # type: dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+         # from: telephone-elixir/port/src/phext.ex:385:29
+         BranchingMap.put(acc.map, c, t)
+
+     when defining the variable "acc", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 386 │       %__MODULE__{acc | map: m}
+     │       ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:386:7: TransitivePhext.load/2
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{
+           dp
+           | data: nd,
+             capacity: new_capacity,
+             resize_count: dp.resize_count + 1,
+             elements_copied: dp.elements_copied + dp.n
+         }
+
+     but got type:
+
+         dynamic(%{..., n: integer()})
+
+     where "dp" was given the type:
+
+         # type: dynamic(%{..., n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:182:27
+         dp.n - 1
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 186 │     %__MODULE__{
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:186:5: DynamicPhext.resize/2
+
+     warning: a struct for BranchingMap is expected on struct update:
+
+         %BranchingMap{
+           bm
+           | root: root,
+             count:
+               bm.count +
+                 if created do
+                   1
+                 else
+                   0
+                 end
+         }
+
+     but got type:
+
+         dynamic(%{..., depth: float() or integer(), root: map()})
+
+     where "bm" was given the types:
+
+         # type: dynamic(%{..., root: map()})
+         # from: telephone-elixir/port/src/phext.ex:320:23
+         put_rec(bm.root, Tuple.to_list(key), bm.depth, value)
+
+         # type: dynamic(%{..., depth: float() or integer(), root: map()})
+         # from: telephone-elixir/port/src/phext.ex:320:23
+         put_rec(bm.root, Tuple.to_list(key), bm.depth, value)
+
+     when defining the variable "bm", you must also pattern match on "%BranchingMap{}"
+
+     type warning found at:
+     │
+ 321 │     {%__MODULE__{bm | root: root, count: bm.count + if(created, do: 1, else: 0)}, created}
+     │      ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:321:6: BranchingMap.put/3
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(dp.data, dp.n, ps), n: dp.n + 1}
+
+     but got type:
+
+         dynamic(%{..., capacity: term(), n: term()})
+
+     where "dp" was given the type:
+
+         # type: dynamic(%{..., capacity: term(), n: term()})
+         # from: telephone-elixir/port/src/phext.ex:204:8
+         dp = grow_if_full(dp)
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 205 │     %__MODULE__{dp | data: put_elem(dp.data, dp.n, ps), n: dp.n + 1}
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:205:5: DynamicPhext.push/2
+
+     warning: a struct for BranchingMap is expected on struct update:
+
+         %BranchingMap{
+           bm
+           | root: root,
+             count:
+               bm.count -
+                 if removed do
+                   1
+                 else
+                   0
+                 end
+         }
+
+     but got type:
+
+         dynamic(%{..., depth: term(), root: map()})
+
+     where "bm" was given the types:
+
+         # type: dynamic(%{..., root: map()})
+         # from: telephone-elixir/port/src/phext.ex:334:23
+         remove_rec(bm.root, Tuple.to_list(key), bm.depth)
+
+         # type: dynamic(%{..., depth: term(), root: map()})
+         # from: telephone-elixir/port/src/phext.ex:334:23
+         remove_rec(bm.root, Tuple.to_list(key), bm.depth)
+
+     when defining the variable "bm", you must also pattern match on "%BranchingMap{}"
+
+     type warning found at:
+     │
+ 335 │     {%__MODULE__{bm | root: root, count: bm.count - if(removed, do: 1, else: 0)}, removed}
+     │      ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:335:6: BranchingMap.remove/2
+
+     warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{tp | map: m}
+
+     but got type:
+
+         dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+
+     where "tp" was given the type:
+
+         # type: dynamic(%{
+           ...,
+           map: %{..., count: float() or integer(), depth: float() or integer(), root: map()}
+         })
+         # from: telephone-elixir/port/src/phext.ex:401:31
+         BranchingMap.put(tp.map, coord, text)
+
+     when defining the variable "tp", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 402 │         %__MODULE__{tp | map: m}
+     │         ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:402:9: TransitivePhext.update/4
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(dp.data, idx, {coord, t})}
+
+     but got type:
+
+         dynamic(%{..., data: {term(), ...}, n: term()})
+
+     where "dp" was given the types:
+
+         # type: dynamic(%{..., data: term(), n: term()})
+         # from: telephone-elixir/port/src/phext.ex:245:20
+         find(dp, coord)
+
+         # type: dynamic(%{..., data: {term(), ...}, n: term()})
+         # from: telephone-elixir/port/src/phext.ex:252:20
+         elem(dp.data, idx)
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 254 │         %__MODULE__{dp | data: put_elem(dp.data, idx, {coord, t})}
+     │         ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:254:9: DynamicPhext.update/4
+
+     warning: a struct for TransitivePhext is expected on struct update:
+
+         %TransitivePhext{tp | map: m}
+
+     but got type:
+
+         dynamic(%{..., map: %{..., count: float() or integer(), depth: term(), root: map()}})
+
+     where "tp" was given the type:
+
+         # type: dynamic(%{..., map: %{..., count: float() or integer(), depth: term(), root: map()}})
+         # from: telephone-elixir/port/src/phext.ex:415:27
+         BranchingMap.remove(tp.map, coord)
+
+     when defining the variable "tp", you must also pattern match on "%TransitivePhext{}"
+
+     type warning found at:
+     │
+ 416 │     %__MODULE__{tp | map: m}
+     │     ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:416:5: TransitivePhext.remove/2
+
+     warning: a struct for DynamicPhext is expected on struct update:
+
+         %DynamicPhext{dp | data: put_elem(data, dp.n - 1, nil), n: dp.n - 1}
+
+     but got type:
+
+         dynamic(%{..., data: term(), n: integer()})
+
+     where "dp" was given the types:
+
+         # type: dynamic(%{..., data: term(), n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:276:12
+         Enum.reduce(Range.new(idx, dp.n - 2, 1), dp.data, fn i, d -> put_elem(d, i, elem(d, i + 1)) end)
+
+         # type: dynamic(%{..., n: integer()})
+         # from: telephone-elixir/port/src/phext.ex:276:30
+         dp.n - 2
+
+     when defining the variable "dp", you must also pattern match on "%DynamicPhext{}"
+
+     type warning found at:
+     │
+ 280 │     dp = %__MODULE__{dp | data: put_elem(data, dp.n - 1, nil), n: dp.n - 1}
+     │          ~
+     │
+     └─ telephone-elixir/port/src/phext.ex:280:10: DynamicPhext.remove_at/2
+
+test ended: failure — consensus failed at step 1017: {'reference': 'pass', 'ada': 'pass', 'algol': 'pass', 'awk': 'pass', 'bash': 'pass', 'caml': 'pass', 'cfml': 'pass', 'clojure': 'pass', 'cobol': 'pass', 'crystal': 'pass', 'd': 'pass', 'dart': 'pass', 'delphi': 'pass', 'elixir': 'pass', 'erlang': 'pass', 'forth': 'pass', 'fortran': 'pass', 'fsharp': 'pass', 'go': 'pass', 'groovy': 'pass', 'haskell': 'pass', 'icon': 'pass', 'io': 'pass', 'j': 'pass', 'julia': 'pass', 'ksh': 'pass', 'lisp': 'pass', 'lua': 'pass', 'ml': 'pass', 'modula2': 'pass', 'mojo': 'fail', 'nim': 'pass', 'objc': 'pass', 'ocaml': 'pass', 'perl': 'pass', 'php': 'pass', 'powershell': 'pass', 'prolog': 'pass', 'py': 'pass', 'r': 'pass', 'rexx': 'pass', 'ruby': 'pass', 'scala': 'pass', 'scheme': 'pass', 'spark': 'pass', 'tcl': 'pass', 'v': 'pass', 'vala': 'pass', 'vb': 'pass'} (placements: 1017)

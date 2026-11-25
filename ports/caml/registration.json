@@ -1,0 +1,7 @@
+{
+ "adapter": "ports/caml/adapter",
+ "id": "caml",
+ "kind": "port",
+ "note": "libphext Caml port, 0.6.1 parity; DISTINCT implementation from ports/ocaml in the Caml idiom (record coordinates, functorised ScrollMap store, tail-recursive walker, own choose/elect rules) on the Caml lineage toolchain OCaml 4.14.1 already on aletheia-core (nothing installed); native suite PASS, fixtures 16/16 byte-identical round-trips, remove coordinate-preserving; adapter contract v2 self-test PASS; smoke-001 verify PASS / 30 placements verbatim {\"first_failure\": null, \"impl\": \"caml\", \"placements_checked\": 30, \"verdict\": \"pass\"}; game-scale rehearsal on snapshot copy of games/test-001/stress.phext: serve init 0.12s (30s budget), driver-form validate 4.29s (60s budget), PASS",
+ "status": "playing"
+}

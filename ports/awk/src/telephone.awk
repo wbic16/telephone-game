@@ -31,7 +31,9 @@ BEGIN {
     if (serve) {
         while ((getline line) > 0) {
             if (line ~ /^[ \t]*$/) continue
+            if (substr(line, 1, 4) == "GZ1:") line = gz_unframe(substr(line, 5))
             resp = handle(line)
+            if (length(resp) > 8192) resp = gz_frame(resp)
             print resp
             fflush()
         }
@@ -46,6 +48,35 @@ BEGIN {
 }
 
 # ------------------------------------------------------------ utilities
+# Game-scale framing (2026-11-24): lines over 8 KB may arrive
+# gzip-framed as "GZ1:" + base64(gzip(line)) -- the fleet-ssh channel
+# is ~25-70 KB/s and raw base64 state lines took minutes at 1,000
+# placements. gawk has no gzip, so (de)framing shells to the system
+# base64(1)/gzip(1) on temp files (mirrors the lua/fortran ports).
+# Lossless; plain lines unchanged. Framed payloads are single-line
+# JSON (no raw newlines), so one getline reads a whole frame.
+function gz_unframe(payload,    fb, fo, line) {
+    fb = TMPBASE "-gz.b64"
+    fo = TMPBASE "-gz.out"
+    write_file(fb, payload)
+    system("base64 -d '" fb "' | gzip -dc > '" fo "'")
+    line = ""
+    if ((getline line < fo) <= 0) line = ""
+    close(fo)
+    system("rm -f '" fb "' '" fo "'")
+    return line
+}
+function gz_frame(data,    fi, fb, line) {
+    fi = TMPBASE "-gz.in"
+    fb = TMPBASE "-gz.b64"
+    write_file(fi, data)
+    system("gzip -c '" fi "' | base64 -w0 > '" fb "'")
+    line = ""
+    if ((getline line < fb) <= 0) line = ""
+    close(fb)
+    system("rm -f '" fi "' '" fb "'")
+    return "GZ1:" line
+}
 function write_file(path, data) {
     printf "%s", data > path
     close(path)

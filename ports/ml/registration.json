@@ -1,0 +1,7 @@
+{
+ "adapter": "ports/ml/adapter",
+ "id": "ml",
+ "kind": "port",
+ "note": "libphext ML (Standard ML) port, 0.6.1 parity; MLton 20241230 user-level tarball in ~/tools/mlton on aletheia-core, Basis Library only (hand-written SHA-256/base64/JSON in src/wire.sml, hand-rolled hash-table scroll map); native suite PASS, fixtures 16/16 byte-identical round-trips, remove coordinate-preserving; adapter contract v2 self-test PASS; smoke-001 verify PASS / 30 placements verbatim {\"first_failure\": null, \"impl\": \"ml\", \"placements_checked\": 30, \"verdict\": \"pass\"}; game-scale rehearsal on snapshot copy of games/test-001/stress.phext: serve init 0.12s (30s budget), driver-form validate 5.20s (60s budget), PASS",
+ "status": "playing"
+}

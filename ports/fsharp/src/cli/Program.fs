@@ -12,6 +12,7 @@ module Program
 
 open System
 open System.IO
+open System.IO.Compression
 open System.Text
 open System.Text.Json
 open System.Security.Cryptography
@@ -475,6 +476,25 @@ let handle (line: string) : JVal =
         doVerify (reqState req) pubkeys
     | _ -> failwithf "unknown cmd %s" cmd
 
+// Game-scale framing (2026-11-24): lines over 8 KB may arrive
+// gzip-framed as "GZ1:" + base64(gzip(line)) -- the fleet-ssh channel
+// is ~25-70 KB/s and raw base64 state lines took minutes at 1,000
+// placements. Lossless; plain lines unchanged.
+let gzUnframe (s: string) : string =
+    let raw = Convert.FromBase64String(s.Substring(4))
+    use msIn = new MemoryStream(raw)
+    use gz = new GZipStream(msIn, CompressionMode.Decompress)
+    use msOut = new MemoryStream()
+    gz.CopyTo(msOut)
+    Encoding.UTF8.GetString(msOut.ToArray())
+
+let gzFrame (s: string) : string =
+    let bytes = Encoding.UTF8.GetBytes(s)
+    use msOut = new MemoryStream()
+    (use gz = new GZipStream(msOut, CompressionMode.Compress)
+     gz.Write(bytes, 0, bytes.Length))
+    "GZ1:" + Convert.ToBase64String(msOut.ToArray())
+
 let emit (v: JVal) =
     Console.Out.Write(canon v + "\n")
     Console.Out.Flush()
@@ -486,7 +506,12 @@ let main argv =
         let mutable line = reader.ReadLine()
         while not (isNull line) do
             if line.Trim() <> "" then
-                try emit (handle line)
+                try
+                    let lineIn = if line.StartsWith("GZ1:") then gzUnframe line else line
+                    let out = canon (handle lineIn)
+                    let framed = if out.Length > 8192 then gzFrame out else out
+                    Console.Out.Write(framed + "\n")
+                    Console.Out.Flush()
                 with e -> emit (JObj [ "error", JStr (e.GetType().Name + ": " + e.Message) ])
             line <- reader.ReadLine()
         0

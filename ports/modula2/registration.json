@@ -1,0 +1,7 @@
+{
+ "adapter": "ports/modula2/adapter",
+ "id": "modula2",
+ "kind": "port",
+ "note": "libphext-modula2: GNU Modula-2 (gm2) 13.3.0 on aletheia-core (user-level deb extraction; the libgm2-18 runtime package extraction was completed during this build - the dev package's .so symlinks dangle without it). 0.6.1 parity: buffer API + DynamicPhext (CLRS quarter-full dynamic array) + TransitivePhext (9-level trie), remove coordinate-preserving. Suite green on hub (unit + store equivalence + fixtures 16/16 byte-identical round-trips incl. the 9.4 MB real-corpora chain, normalize idempotent, 0.61 s). Adapter contract v2 self-test PASS (id/echo/elect/keygen/seek/choose+apply/validate prior+driver forms/attest/verify). Smoke-001 one-shot verify PASS, 30 placements. Game scale on a snapshot of live test-001 (1005 placements, 2265624 bytes): serve init 0.06 s (deferred cache), choose 4.67 s, apply 3.86 s, driver-form validate 4.62 s PASS. Toolchain notes: gm2 13 emits unprefixed library/RTS symbols while Ubuntu's libm2pim exports m2pim_-prefixed ones, and multi-module one-shot compiles duplicate main; the build (ports/modula2/build.sh) compiles library modules with -c, links the program module one-shot against them, and bridges the ~36 unprefixed symbols with generated jmp-thunk aliases (build/thunk.o). gm2 CARDINAL FOR loops with a computed bound wrap at 0, so all count loops are WHILE loops.",
+ "status": "playing"
+}

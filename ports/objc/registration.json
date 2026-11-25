@@ -1,0 +1,7 @@
+{
+ "id": "objc",
+ "adapter": "ports/objc/adapter",
+ "status": "playing",
+ "kind": "port",
+ "note": "libphext Objective-C port (user-level GNUstep stack built from source on aletheia-core, no sudo: libobjc2 2.2.1 + gnustep-make 2.9.2 ng-gnu-gnu + gnustep-base 1.30.0 --disable-tls, system clang 18; prefix ~/telephone-objc), 0.6.1 parity; native suite 41/41 checks, fixtures 16/16 byte-identical round-trips + normalize idempotent; adapter contract v2 self-test PASS; one-shot verify vs games/smoke-001/stress.phext: {\"first_failure\": null, \"impl\": \"objc\", \"placements_checked\": 30, \"verdict\": \"pass\"}; serve init at game scale (games/test-001 snapshot copy, 2,236,326 bytes, GZ1 framing via temp files) replied {\"impl\":\"objc\",\"verdict\":\"pass\"} in 3.70 s"
+}

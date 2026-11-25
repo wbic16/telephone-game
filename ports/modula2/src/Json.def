@@ -1,0 +1,40 @@
+DEFINITION MODULE Json;
+(* Minimal JSON parser + canonical serializer for the Modula-2 port.
+   Mirrors the semantics of the reference ports: canonical JSON is
+   Python json.dumps(sort_keys=TRUE, separators=(",",":"),
+   ensure_ascii=TRUE); object key order in parsed values is
+   irrelevant because Canon re-sorts. Node 0 is the null node:
+   missing lookups return 0 and serialize as null. *)
+
+FROM BStr IMPORT Bytes;
+
+TYPE
+  JType = (JNone, JNull, JBool, JNum, JStr, JArr, JObj);
+  JVal = CARDINAL;
+
+PROCEDURE Parse (s : Bytes; VAR ok : BOOLEAN) : JVal;
+PROCEDURE TypeOf (v : JVal) : JType;
+PROCEDURE IsNull (v : JVal) : BOOLEAN;
+(* Object lookup by key; 0 when absent. *)
+PROCEDURE Get (v : JVal; key : ARRAY OF CHAR) : JVal;
+PROCEDURE GetB (v : JVal; key : Bytes) : JVal;
+PROCEDURE ArrLen (v : JVal) : CARDINAL;
+PROCEDURE ArrItem (v : JVal; i : CARDINAL) : JVal;
+(* String value (string nodes); empty Bytes otherwise. Borrowed. *)
+PROCEDURE StrVal (v : JVal) : Bytes;
+(* Raw number text. Borrowed. *)
+PROCEDURE NumVal (v : JVal) : Bytes;
+PROCEDURE IntVal (v : JVal) : LONGINT;
+PROCEDURE BoolVal (v : JVal) : BOOLEAN;
+(* Object keys in insertion order; count via ArrLen-like ObjLen. *)
+PROCEDURE ObjLen (v : JVal) : CARDINAL;
+PROCEDURE ObjKey (v : JVal; i : CARDINAL) : Bytes;
+PROCEDURE ObjVal (v : JVal; i : CARDINAL) : JVal;
+(* Canonical serialization appended to out. *)
+PROCEDURE Canon (v : JVal; out : Bytes);
+(* JSON string literal for s appended to out (ensure_ascii style:
+   bytes >= 0x80 become \u00XX of the byte value). *)
+PROCEDURE Quote (s : Bytes; out : Bytes);
+PROCEDURE QuoteStr (s : ARRAY OF CHAR; out : Bytes);
+
+END Json.

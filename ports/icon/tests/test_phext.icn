@@ -1,0 +1,208 @@
+## Test suite for libphext-icon -- plain assertions, no framework.
+## Run: test_phext.icn [fixtures_dir]
+$include "../src/phext.icn"
+
+global checks, failures
+
+procedure ok(cond, name)
+  checks +:= 1
+  if /cond then {
+    failures +:= 1
+    write(&errout, "FAIL: ", name)
+  }
+  return
+end
+
+procedure eq(a, b, name)
+  ok(if a === b then 1 else &null, name)
+  return
+end
+
+procedure c(s)
+  return coord_parse(s)
+end
+
+procedure parse_fails(str)
+  return if not coord_parse(str) then 1 else &null
+end
+
+procedure read_file_bytes(path)
+  local f, data, chunk
+  f := open(path, "u") | runerr(1, "cannot open " || path)
+  data := ""
+  while chunk := reads(f, 65536) do data ||:= chunk
+  close(f)
+  return data
+end
+
+procedure find_fixtures(root, out)
+  ## Icon reads a directory opened with open() as its entry names.
+  ## Fixture case directories carry no "." in their names; files do.
+  local d, entries, e, p
+  d := open(root) | return out
+  entries := []
+  while e := read(d) do put(entries, e)
+  close(d)
+  every e := !entries do {
+    p := root || "/" || e
+    if e[-11:0] == "input.phext" then
+      put(out, p)
+    else if not find(".", e) then
+      find_fixtures(p, out)
+  }
+  return out
+end
+
+procedure main(args)
+  local sc, sample, buf, res, m, dyn, trn, str, files, f, data, n1
+  checks := 0
+  failures := 0
+  phext_init_globals()
+
+  ## coordinate
+  eq(coord_string(c("1.2.3/4.5.6/7.8.9")), "1.2.3/4.5.6/7.8.9", "coord format")
+  ok(if coord_compare(c("1.1.1/1.1.1/1.1.1"), c("1.1.1/1.1.1/1.1.2")) < 0 then 1 else &null, "order scroll")
+  ok(if coord_compare(c("1.1.1/1.1.1/1.1.9"), c("1.1.1/1.1.2/1.1.1")) < 0 then 1 else &null, "order section")
+  ok(if coord_compare(c("2.1.1/1.1.1/1.1.1"), c("1.9.9/9.9.9/9.9.9")) > 0 then 1 else &null, "order library")
+  eq(coord_string(coord_root()), "1.1.1/1.1.1/1.1.1", "root")
+  ok(parse_fails("0.1.1/1.1.1/1.1.1"), "coord rejects 0")
+  ok(parse_fails("1.1/1.1.1/1.1.1"), "coord rejects short")
+
+  ## phokenize
+  sc := phokenize("hello")
+  eq(*sc, 1, "one scroll")
+  eq(coord_string(sc[1][1]), "1.1.1/1.1.1/1.1.1", "first coord")
+  eq(sc[1][2], "hello", "first text")
+  sc := phokenize("a" || char(23) || "b" || char(23) || char(23) || "c\nline2")
+  eq(*sc, 3, "scroll breaks")
+  eq(coord_string(sc[2][1]), "1.1.1/1.1.1/1.1.2", "second coord")
+  eq(coord_string(sc[3][1]), "1.1.1/1.1.1/1.1.4", "gap coord advance")
+  eq(sc[3][2], "c\nline2", "newline is ordinary text")
+  sc := phokenize("x" || char(1) || "y")
+  eq(coord_string(sc[2][1]), "2.1.1/1.1.1/1.1.1", "library break resets")
+  sc := phokenize("x" || char(24) || "y")
+  eq(coord_string(sc[2][1]), "1.1.1/1.1.1/1.2.1", "section break")
+  eq(*phokenize(""), 0, "empty buffer")
+  sc := phokenize(char(97) || char(0) || char(255) || char(98))
+  eq(*sc, 1, "binary text is one scroll")
+  eq(*sc[1][2], 4, "binary text preserved")
+
+  ## round trip
+  sample := "alpha" || char(23) || "beta" || char(24) || "gamma" || char(1) || "delta"
+  eq(dephokenize(phokenize(sample)), sample, "round trip sample")
+  eq(dephokenize([[c("1.1.1/1.1.1/1.1.2"), "two"], [c("1.1.1/1.1.1/1.1.1"), "one"]]),
+     "one" || char(23) || "two", "dephokenize sorts canonically")
+  buf := char(23) || char(23) || "lead"
+  eq(normalize(normalize(buf)), normalize(buf), "normalize idempotent")
+
+  ## fetch incl. gaps
+  buf := "one" || char(23) || "two" || char(23) || char(23) || "four"
+  eq(phext_fetch(buf, c("1.1.1/1.1.1/1.1.1")), "one", "fetch 1")
+  eq(phext_fetch(buf, c("1.1.1/1.1.1/1.1.4")), "four", "fetch 4")
+  eq(phext_fetch(buf, c("1.1.1/1.1.1/1.1.3")), "", "gap fetch is empty")
+  eq(phext_fetch(buf, c("9.9.9/9.9.9/9.9.9")), "", "far gap fetch is empty")
+  eq(phext_fetch("", c("1.1.1/1.1.1/1.1.1")), "", "fetch empty buffer")
+
+  ## insert
+  res := phext_insert("base", c("1.1.1/1.1.1/1.1.1"), "+more")
+  eq(phext_fetch(res, c("1.1.1/1.1.1/1.1.1")), "base+more", "insert appends after existing")
+  res := phext_insert("", c("1.1.1/1.1.1/1.1.3"), "new")
+  eq(phext_fetch(res, c("1.1.1/1.1.1/1.1.3")), "new", "insert creates at gap")
+  eq(res, char(23) || char(23) || "new", "insert at gap emits breaks")
+  res := phext_insert("a" || char(23) || "c", c("1.1.1/1.1.1/1.1.2"), "b")
+  eq(phext_fetch(res, c("1.1.1/1.1.1/1.1.2")), "cb", "insert merges existing + inserted")
+
+  ## replace / remove -- coordinate-preserving
+  eq(phext_replace("old" || char(23) || "keep", c("1.1.1/1.1.1/1.1.1"), "new"),
+     "new" || char(23) || "keep", "replace overwrites")
+  res := phext_replace("a", c("1.1.1/1.1.1/1.1.5"), "deep")
+  eq(phext_fetch(res, c("1.1.1/1.1.1/1.1.5")), "deep", "replace creates")
+  res := phext_remove("a" || char(23) || "b" || char(23) || "c", c("1.1.1/1.1.1/1.1.2"))
+  eq(res, "a" || char(23) || char(23) || "c", "remove leaves a gap (no renumbering)")
+  eq(phext_fetch(res, c("1.1.1/1.1.1/1.1.2")), "", "removed coordinate reads empty")
+  eq(phext_fetch(res, c("1.1.1/1.1.1/1.1.3")), "c", "neighbour keeps its coordinate")
+  eq(*phext_remove("only", c("1.1.1/1.1.1/1.1.1")), 0, "remove sole scroll")
+  eq(phext_remove("a", c("5.5.5/5.5.5/5.5.5")), "a", "remove gap is a no-op")
+
+  ## explode / implode
+  m := phext_explode("x" || char(23) || "y")
+  eq(*m, 2, "explode count")
+  eq(phext_implode(m), "x" || char(23) || "y", "implode round trip")
+
+  ## Dynamic + Transitive equivalence
+  dyn := dynamic_new("", 4)
+  trn := transitive_new("")
+  str := ""
+  str := step(dyn, trn, str, "insert", "1.1.1/1.1.1/1.1.1", "alpha")
+  str := step(dyn, trn, str, "insert", "1.1.1/1.1.1/1.1.3", "gamma")
+  str := step(dyn, trn, str, "insert", "1.1.1/1.1.1/1.1.2", "beta")
+  str := step(dyn, trn, str, "insert", "1.1.1/1.1.1/1.1.2", "+")
+  str := step(dyn, trn, str, "replace", "2.1.1/1.1.1/1.1.1", "lib2")
+  str := step(dyn, trn, str, "remove", "1.1.1/1.1.1/1.1.3", "")
+  eq(dynamic_fetch(dyn, c("1.1.1/1.1.1/1.1.3")), "", "dynamic removed coord is gap")
+  eq(transitive_fetch(trn, c("1.1.1/1.1.1/1.1.3")), "", "transitive removed coord is gap")
+  eq(dynamic_fetch(dyn, c("2.1.1/1.1.1/1.1.1")), "lib2", "dynamic neighbour unmoved")
+  eq(transitive_fetch(trn, c("2.1.1/1.1.1/1.1.1")), "lib2", "transitive neighbour unmoved")
+  dynamic_insert(dyn, c("1.1.1/1.1.1/1.1.1"), "")
+  transitive_insert(trn, c("1.1.1/1.1.1/1.1.1"), "")
+  dynamic_replace(dyn, c("1.1.1/1.1.1/1.1.1"), "")
+  transitive_replace(trn, c("1.1.1/1.1.1/1.1.1"), "")
+  eq(dynamic_length(dyn), transitive_length(trn), "store lengths agree")
+
+  ## capacity discipline
+  dyn := dynamic_new("", 4)
+  every i := 1 to 64 do dynamic_append(dyn, [1,1,1,1,1,1,1,1,i], "s")
+  eq(dynamic_capacity(dyn), 64, "capacity doubles to fit 64")
+  ok(if dynamic_resize_count(dyn) <= 7 then 1 else &null, "resize count is logarithmic")
+
+  ## fixtures
+  if *args >= 1 then {
+    files := []
+    find_fixtures(args[1], files)
+    files := sort(files)
+    eq(*files, 16, "16 fixtures found")
+    identical := 0
+    idem := 0
+    every f := !files do {
+      data := read_file_bytes(f)
+      if dephokenize(phokenize(data)) == data then identical +:= 1
+      n1 := normalize(data)
+      if normalize(n1) == n1 then idem +:= 1
+    }
+    write("fixtures: ", *files, " input.phext, ", identical,
+          " byte-identical round-trips, ", idem, " normalize-idempotent")
+    eq(identical, *files, "fixtures byte-identical round-trips")
+    eq(idem, *files, "all fixtures normalize idempotently")
+  } else
+    write("fixtures: skipped (no fixtures dir)")
+
+  write("icon suite: ", checks, " checks, ", failures, " failures")
+  exit(if failures = 0 then 0 else 1)
+end
+
+procedure step(dyn, trn, str, op, coord, text)
+  local cc
+  cc := c(coord)
+  case op of {
+    "insert": {
+      dynamic_insert(dyn, cc, text)
+      transitive_insert(trn, cc, text)
+      str := phext_insert(str, cc, text)
+    }
+    "replace": {
+      dynamic_replace(dyn, cc, text)
+      transitive_replace(trn, cc, text)
+      str := phext_replace(str, cc, text)
+    }
+    "remove": {
+      dynamic_remove(dyn, cc)
+      transitive_remove(trn, cc)
+      str := phext_remove(str, cc)
+    }
+  }
+  eq(dynamic_serialize(dyn), str, "dynamic == string after " || op || " " || coord)
+  eq(transitive_serialize(trn), str, "transitive == string after " || op || " " || coord)
+  eq(dynamic_fetch(dyn, cc), phext_fetch(str, cc), "dynamic fetch after op")
+  eq(transitive_fetch(trn, cc), phext_fetch(str, cc), "transitive fetch after op")
+  return str
+end
